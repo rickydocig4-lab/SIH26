@@ -1,0 +1,291 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Official Inspection Dossier — Department of Consumer Affairs</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .report-section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary-navy);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .evidence-img-container {
+            max-height: 400px;
+            background: #0F172A;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+        .evidence-img {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+        }
+        .violation-item-card {
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-bottom: 14px;
+            background: #FFFFFF;
+        }
+        .vio-border-danger {
+            border: 1px solid #FCA5A5;
+            border-left: 6px solid var(--danger);
+            background: #FEF2F2;
+        }
+        .vio-border-warning {
+            border: 1px solid #FDE68A;
+            border-left: 6px solid var(--warning);
+            background: #FFFBEB;
+        }
+        .statutory-box {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="national-accent-bar"></div>
+
+    <header class="app-header no-print">
+        <a href="dashboard.html" class="brand-container">
+            <svg class="emblem-img" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="46" stroke="#FF9933" stroke-width="4"/>
+                <circle cx="50" cy="50" r="28" stroke="#138808" stroke-width="3"/>
+                <circle cx="50" cy="50" r="8" fill="#0B2545"/>
+                <path d="M50 22 L50 78 M22 50 L78 50 M30 30 L70 70 M30 70 L70 30" stroke="#0056B3" stroke-width="2"/>
+            </svg>
+            <div>
+                <div class="brand-title">उपभोक्ता मामले विभाग | Department of Consumer Affairs</div>
+                <div class="brand-subtitle">Official Legal Metrology Inspection Dossier</div>
+            </div>
+        </a>
+        <div style="display: flex; gap: 10px;">
+            <button type="button" id="btnGenerateNotice" class="btn btn-warning btn-sm">
+                ⚖️ Generate Legal Notice
+            </button>
+            <button type="button" id="btnPrintReport" class="btn btn-primary btn-sm">
+                🖨️ Print / Export PDF
+            </button>
+            <a href="dashboard.html" class="btn btn-outline-primary btn-sm" style="color: #FFFFFF; border-color: rgba(255,255,255,0.4);">
+                Dashboard
+            </a>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Official Government Dossier Card -->
+        <div class="card" style="padding: 36px; border: 2px solid #CBD5E1; box-shadow: var(--shadow-md);">
+            
+            <!-- Official Seal & Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid var(--primary-navy); padding-bottom: 20px; margin-bottom: 24px; flex-wrap: wrap; gap: 20px;">
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <svg viewBox="0 0 100 100" style="width: 70px; height: 70px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="50" cy="50" r="46" stroke="#0B2545" stroke-width="4"/>
+                        <circle cx="50" cy="50" r="28" stroke="#138808" stroke-width="3"/>
+                        <circle cx="50" cy="50" r="8" fill="#FF9933"/>
+                        <path d="M50 22 L50 78 M22 50 L78 50 M30 30 L70 70 M30 70 L70 30" stroke="#0056B3" stroke-width="2"/>
+                    </svg>
+                    <div>
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Government of India</div>
+                        <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--primary-navy); margin: 2px 0;">
+                            Department of Consumer Affairs (DoCA)
+                        </h1>
+                        <div style="font-size: 0.95rem; font-weight: 600; color: var(--navy-light);">
+                            Legal Metrology Enforcement Wing | Inspection Dossier
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: right;">
+                    <div class="text-muted small">Inspection Dossier Reference</div>
+                    <div id="reportRefNumber" style="font-family: monospace; font-size: 1.1rem; font-weight: 700; color: var(--primary-navy);">
+                        DOCA/LM/2026/DEMO
+                    </div>
+                    <div id="reportDate" class="text-muted small">03 Sept 2026, 14:30 IST</div>
+                </div>
+            </div>
+
+            <!-- Inspection Location & Officer Details -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; background: #F8FAFC; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); margin-bottom: 24px;">
+                <div>
+                    <span class="text-muted small">Inspected Establishment / Store:</span>
+                    <div id="reportStore" style="font-weight: 700;">Modern Bazaar Supermarket</div>
+                </div>
+                <div>
+                    <span class="text-muted small">Jurisdiction / Location:</span>
+                    <div id="reportLocation" style="font-weight: 700;">Connaught Place, New Delhi</div>
+                </div>
+                <div>
+                    <span class="text-muted small">Enforcement Inspector:</span>
+                    <div id="reportOfficer" style="font-weight: 700;">Inspector Rajesh Sharma</div>
+                </div>
+                <div>
+                    <span class="text-muted small">Badge / Authority ID:</span>
+                    <div id="reportBadge" style="font-weight: 700; font-family: monospace;">LM-DEL-8942</div>
+                </div>
+            </div>
+
+            <!-- Executive Summary Banner -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0B2545; color: #FFFFFF; padding: 18px 24px; border-radius: var(--radius-sm); margin-bottom: 28px; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD;">Statutory Verdict</div>
+                    <div id="reportVerdictBadge" class="badge badge-success badge-lg" style="margin-top: 4px;">
+                        ✓ COMPLIANT (LEGAL METROLOGY ACT, 2009)
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD;">Compliance Score</div>
+                    <div id="reportScoreDisplay" style="font-size: 1.8rem; font-weight: 800; color: #FF9933;">98%</div>
+                </div>
+            </div>
+
+            <!-- SECTION 1: BARCODE AUTHENTICITY CROSS-CHECK -->
+            <div class="report-section-title">
+                1. Product Authenticity & Barcode Registry Cross-Check
+            </div>
+            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 18px; margin-bottom: 28px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <div>
+                        <strong>GTIN / Barcode: </strong><code id="authBarcodeVal">8901030383854</code>
+                        <span id="authBarcodeType" class="text-muted small" style="margin-left: 8px;">(EAN-13)</span>
+                    </div>
+                    <div>
+                        <span id="authVerdictBadge" class="badge badge-success">✓ Authenticity Verified</span>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table" style="font-size: 0.9rem;">
+                        <thead>
+                            <tr>
+                                <th>Verification Parameter</th>
+                                <th>Official Database Record (<span id="authDbSource">Open Food Facts</span>)</th>
+                                <th>Printed Label Extraction (Multimodal AI)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Product / Commodity</strong></td>
+                                <td id="authDbProduct">Parle-G Gold Biscuits (1 kg)</td>
+                                <td id="authLabelProduct">Parle-G Gold Biscuits</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Brand / Manufacturer</strong></td>
+                                <td id="authDbMfg">Parle Products Pvt. Ltd.</td>
+                                <td id="authLabelMfg">Parle Products Pvt. Ltd.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Retail Price (MRP)</strong></td>
+                                <td id="authDbMrp">₹ 140.00</td>
+                                <td id="authLabelMrp">₹ 140.00 (incl. of all taxes)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="statutory-box" style="margin-top: 12px;">
+                    <strong>Authenticity Audit Finding:</strong> <span id="authVerdictNotes">Barcode matches registered brand and manufacturer identity.</span>
+                </div>
+            </div>
+
+            <!-- SECTION 2: MANDATORY DECLARATIONS AUDIT (RULE 6 & 7) -->
+            <div class="report-section-title">
+                2. Mandatory Declarations Audit (Rule 6 & Rule 7 Standards)
+            </div>
+            <div class="table-responsive" style="margin-bottom: 28px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Mandatory Declaration</th>
+                            <th>Statutory Rule</th>
+                            <th>Extracted Label Value</th>
+                            <th>Measured Numeral Height (mm)</th>
+                            <th>Rule Verdict</th>
+                        </tr>
+                    </thead>
+                    <tbody id="declarationsTableBody">
+                        <!-- Dynamic declarations -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- SECTION 3: STATUTORY VIOLATIONS & PENAL PROVISIONS -->
+            <div class="report-section-title">
+                3. Statutory Violations & Penal Provisions (If Any)
+            </div>
+            <div id="violationsDossierList" style="margin-bottom: 24px;">
+                <!-- Dynamic violation cards -->
+            </div>
+
+            <div id="noViolationsReportCard" style="display: none; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: var(--radius-sm); padding: 16px; margin-bottom: 24px; color: #065F46;">
+                <strong>✓ Zero Non-Compliance:</strong> All mandatory declarations strictly comply with Rule 6, 7, 8, and 9 of the Legal Metrology (Packaged Commodities) Rules, 2011.
+            </div>
+
+            <!-- SECTION 4: VISUAL EVIDENCE ATTACHMENT -->
+            <div class="report-section-title">
+                4. Visual Evidence Photo Attachment
+            </div>
+            <div class="evidence-img-container">
+                <img id="evidenceLabelImage" class="evidence-img" style="display: none;" alt="Scanned Label Evidence">
+                <div id="evidencePlaceholder" style="color: #94A3B8; padding: 40px; text-align: center;">
+                    📷 Photo Evidence Attached to Dossier Record
+                </div>
+            </div>
+
+            <!-- Signature Block -->
+            <div style="display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px dashed var(--border-color); page-break-inside: avoid;">
+                <div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Inspection Authority:</div>
+                    <div style="font-weight: 700; color: var(--primary-navy);">Department of Consumer Affairs</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Government of India</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-family: cursive; font-size: 1.1rem; color: #0B2545;">R. Sharma</div>
+                    <div style="font-weight: 700; color: var(--primary-navy);">Authorized Legal Metrology Officer</div>
+                    <div style="font-size: 0.85rem; font-family: monospace; color: var(--text-secondary);">Digitally Certified via Supabase ID</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Legal Notice Modal Dialog -->
+    <div id="noticeModal" class="modal-overlay" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 style="font-size: 1.1rem; font-weight: 700;">📜 Statutory Show-Cause Notice (Rule 27)</h3>
+                <button type="button" onclick="document.getElementById('noticeModal').style.display='none'" style="background: none; border: none; color: #FFFFFF; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="noticeModalContent" class="form-control" rows="14" style="font-family: monospace; font-size: 0.85rem; background: #F8FAFC;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="document.getElementById('noticeModal').style.display='none'" class="btn btn-outline-primary">Close</button>
+                <button type="button" onclick="window.print()" class="btn btn-warning">Print Notice</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/env-config.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/report.js"></script>
+</body>
+</html>
