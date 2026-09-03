@@ -13,18 +13,18 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Health / root endpoint
-app.get('/', (req, res) => {
+// Health / Status Check (handles both / and /api)
+app.all(['/', '/api'], (req, res) => {
     res.json({
         status: 'online',
         department: 'Department of Consumer Affairs (DoCA)',
         service: 'Legal Metrology Compliance API (SIH26034)',
-        version: '1.0.0'
+        timestamp: new Date().toISOString()
     });
 });
 
-// Config endpoint
-app.get('/api/config', (req, res) => {
+// Config Endpoint (handles both /api/config and /config)
+app.all(['/api/config', '/config'], (req, res) => {
     res.json({
         supabaseUrl: SUPABASE_URL,
         supabaseAnonKey: SUPABASE_ANON_KEY,
@@ -33,8 +33,8 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Gemini Vision Multimodal Proxy
-app.post('/api/analyze-label', async (req, res) => {
+// Gemini Vision Multimodal Proxy (handles both /api/analyze-label and /analyze-label)
+app.post(['/api/analyze-label', '/analyze-label'], async (req, res) => {
     try {
         const { imageBase64, barcodeData } = req.body;
 
@@ -157,12 +157,10 @@ function getSimulatedExtraction(barcodeData) {
     };
 }
 
-// Local testing listener
 if (require.main === module) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Backend API running on http://localhost:${PORT}`);
     });
 }
 
-// Export for Vercel Serverless Function
 module.exports = app;
