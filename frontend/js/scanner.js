@@ -90,11 +90,22 @@ function goToStep(step) {
     } else if (step === 3) {
         isDetectingBarcode = false;
         if (!scanState.labelImage) {
-            if (container) container.style.display = 'block';
+            const labelVideo = document.getElementById('labelCameraFeed');
+            const labelPlaceholder = document.getElementById('labelCameraPlaceholder');
+            const labelContainer = document.getElementById('cameraFeedContainer3');
+            if (labelContainer) labelContainer.style.display = 'block';
             if (preview) preview.style.display = 'none';
-            if (video && cameraStream) {
-                video.srcObject = cameraStream;
-                video.play().catch(()=>{});
+
+            if (cameraStream) {
+                if (labelVideo) {
+                    labelVideo.srcObject = cameraStream;
+                    labelVideo.play().catch(()=>{});
+                    if (labelPlaceholder) labelPlaceholder.style.display = 'none';
+                }
+                if (video) {
+                    video.srcObject = cameraStream;
+                    video.play().catch(()=>{});
+                }
             }
         }
     } else {
@@ -260,40 +271,46 @@ function renderBarcodeVerification(res) {
 }
 
 function captureLabelPhoto() {
-    const video = document.getElementById('cameraFeed');
-    if (!video) return;
+    const video = document.getElementById('labelCameraFeed') || document.getElementById('cameraFeed');
+    if (!video || (!video.videoWidth && !video.srcObject)) {
+        console.warn('[Camera] No active camera stream to capture from');
+        alert('Camera is not active. Please use the file upload option below.');
+        return;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    console.log('[Camera] Label photo captured. Size:', Math.round(dataUrl.length / 1024), 'KB');
     setLabelImage(dataUrl);
 }
 
 function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
+    console.log('[Upload] File selected:', file.name, file.type, Math.round(file.size / 1024), 'KB');
     const reader = new FileReader();
     reader.onload = (event) => {
+        console.log('[Upload] File read complete. Setting label image...');
         setLabelImage(event.target.result);
     };
     reader.readAsDataURL(file);
 }
 
 function setLabelImage(dataUrl) {
+    console.log('[Label] setLabelImage called. Data length:', Math.round(dataUrl.length / 1024), 'KB');
     scanState.labelImage = dataUrl;
+
     const preview = document.getElementById('capturedLabelPreview');
-    const feedContainer = document.getElementById('cameraFeedContainer');
+    // Step 3 has its own camera container wrapper - check both IDs
+    const feedContainer = document.getElementById('cameraFeedContainer3') || document.getElementById('cameraFeedContainer');
     const btnCapture = document.getElementById('btnCaptureLabel');
     const btnRetake = document.getElementById('btnRetakeLabel');
     const btnRunAi = document.getElementById('btnRunAiCheck');
 
-    if (preview) {
-        preview.src = dataUrl;
-        preview.style.display = 'block';
-    }
+    if (preview) { preview.src = dataUrl; preview.style.display = 'block'; }
     if (feedContainer) feedContainer.style.display = 'none';
     if (btnCapture) btnCapture.style.display = 'none';
     if (btnRetake) {
@@ -307,84 +324,80 @@ function setLabelImage(dataUrl) {
             if (btnRunAi) btnRunAi.disabled = true;
         };
     }
-    if (btnRunAi) btnRunAi.disabled = false;
+    if (btnRunAi) { btnRunAi.disabled = false; btnRunAi.style.opacity = '1'; }
+    console.log('[Label] Label image set. AI button enabled.');
 }
 
 function updateCalibrationRatio() {
     const slider = document.getElementById('calibrationSlider');
+    if (!slider) return;
     const cardPx = parseInt(slider.value, 10);
-    document.getElementById('calibPxDisplay').textContent = `${cardPx} px`;
+    const px = document.getElementById('calibPxDisplay');
+    const dpiEl = document.getElementById('computedDpiDisplay');
+    if (px) px.textContent = `${cardPx} px`;
     scanState.calibration.cardPixelWidth = cardPx;
     scanState.calibration.pxPerMm = cardPx / scanState.calibration.cardWidthMm;
     const dpi = Math.round(scanState.calibration.pxPerMm * 25.4);
-    document.getElementById('computedDpiDisplay').textContent = `${dpi} DPI (${scanState.calibration.pxPerMm.toFixed(2)} px/mm)`;
+    if (dpiEl) dpiEl.textContent = `${dpi} DPI (${scanState.calibration.pxPerMm.toFixed(2)} px/mm)`;
 }
 
 function initStepHandlers() {
+    console.log('[Scanner] Initializing all step handlers...');
+
     // Step 1: Manual Barcode / Skip
     const btnManual = document.getElementById('btnManualBarcode');
     if (btnManual) {
         btnManual.onclick = () => {
             const input = prompt('Enter 8, 12, 13 or 14-digit GTIN / EAN barcode:');
-            if (input && input.trim().length >= 8) {
-                processBarcode(input.trim());
-            }
+            if (input && input.trim().length >= 8) processBarcode(input.trim());
         };
     }
 
     const btnSkip = document.getElementById('btnSkipBarcode');
     if (btnSkip) {
         btnSkip.onclick = () => {
+            console.log('[Scanner] Skip barcode — going to label OCR mode');
             isDetectingBarcode = false;
-            scanState.barcodeData = {
-                barcode: null,
-                isRegistered: false,
-                verificationStatus: 'label_lookup_mode',
-                proofSummary: 'No Barcode present — Initiating Label-Identified Authenticity Fallback Mode'
-            };
+            scanState.barcodeData = { barcode: null, isRegistered: false, verificationStatus: 'label_lookup_mode' };
             goToStep(3);
         };
     }
 
-    // Step 2: Continue to Step 3
+    // Step 2 → 3
     const btnProceedLabel = document.getElementById('btnProceedToLabel');
-    if (btnProceedLabel) {
-        btnProceedLabel.onclick = () => goToStep(3);
-    }
+    if (btnProceedLabel) btnProceedLabel.onclick = () => goToStep(3);
 
-    // Step 3: Capture & File Upload
+    // Step 3: Capture
     const btnCap = document.getElementById('btnCaptureLabel');
     if (btnCap) btnCap.onclick = captureLabelPhoto;
+    else console.warn('[Scanner] #btnCaptureLabel NOT FOUND in DOM');
 
-    const fileInput = document.getElementById('labelFileInput');
-    if (fileInput) fileInput.onchange = handleFileUpload;
+    // File upload — HTML uses id="fileUploadLabel"
+    const fileInput = document.getElementById('fileUploadLabel') || document.getElementById('labelFileInput');
+    if (fileInput) { fileInput.onchange = handleFileUpload; console.log('[Scanner] File input bound:', fileInput.id); }
+    else console.warn('[Scanner] File upload input NOT FOUND — check HTML for id="fileUploadLabel"');
 
     const slider = document.getElementById('calibrationSlider');
     if (slider) slider.oninput = updateCalibrationRatio;
 
-    // Step 3: Run AI Check
+    // Step 3: Run AI
     const btnRun = document.getElementById('btnRunAiCheck');
     if (btnRun) {
         btnRun.onclick = async () => {
-            if (!scanState.labelImage) {
-                alert('Please capture or upload a label photo first.');
-                return;
-            }
+            if (!scanState.labelImage) { alert('Please capture or upload a label photo first.'); return; }
             await runMultimodalAnalysis();
         };
-    }
+    } else console.warn('[Scanner] #btnRunAiCheck NOT FOUND in DOM');
 
-    // Step 4: Proceed to final summary
+    // Step 4 → 5
     const btnProceedReport = document.getElementById('btnProceedToReport');
-    if (btnProceedReport) {
-        btnProceedReport.onclick = () => goToStep(5);
-    }
+    if (btnProceedReport) btnProceedReport.onclick = () => goToStep(5);
 
-    // Step 5: Save & View Detailed Legal Dossier
-    const btnSave = document.getElementById('btnSaveAndGenerateDossier');
+    // Step 5: Save
+    const btnSave = document.getElementById('btnSaveAndGenerateDossier') || document.getElementById('btnSaveAndReport');
     if (btnSave) {
         btnSave.onclick = async () => {
-            showLoading('Saving inspection record to Supabase database...');
+            showLoading('Saving inspection record...');
             const record = {
                 product_name: scanState.visionData?.product_name?.value || scanState.barcodeData?.productName || 'Inspected Commodity',
                 brand: scanState.visionData?.manufacturer_name?.value || scanState.barcodeData?.brand || 'Unknown',
@@ -392,51 +405,69 @@ function initStepHandlers() {
                 overall_score: scanState.complianceReport?.overall_score || 0,
                 compliance_status: scanState.complianceReport?.compliance_status || 'NON_COMPLIANT',
                 authenticity_status: scanState.complianceReport?.authenticity_status || 'AUTHENTIC',
-                authenticity_score: scanState.complianceReport?.authenticity_score || 90,
-                authenticity_remarks: scanState.complianceReport?.authenticity_remarks || [],
                 declarations: scanState.complianceReport?.declarations || [],
                 violations: scanState.complianceReport?.violations || [],
                 vision_raw: scanState.visionData || {},
                 barcode_data: scanState.barcodeData || {},
                 image_url: scanState.labelImage
             };
-
-            const saved = await SupabaseService.saveScan(record);
-            hideLoading();
-            if (saved && saved.id) {
-                window.location.href = `report.html?id=${saved.id}`;
-            } else {
-                alert('Inspection saved locally in cache.');
-                window.location.href = 'report.html';
+            console.log('[Save] Saving scan record:', record);
+            try {
+                const saved = await SupabaseService.saveScan(record);
+                hideLoading();
+                window.location.href = saved?.id ? `report.html?id=${saved.id}` : 'report.html';
+            } catch(e) {
+                hideLoading();
+                alert('Save error: ' + e.message);
             }
         };
-    }
+    } else console.warn('[Scanner] Save button NOT FOUND — check id="btnSaveAndGenerateDossier" or "btnSaveAndReport"');
+
+    console.log('[Scanner] ✅ All step handlers initialized.');
 }
 
 async function runMultimodalAnalysis() {
+    console.group('[Vision] === Multimodal Analysis Start ===');
+    console.log('[Vision] Label image size:', scanState.labelImage ? Math.round(scanState.labelImage.length / 1024) + 'KB' : 'MISSING');
+    console.log('[Vision] Barcode data:', JSON.stringify(scanState.barcodeData));
+    console.log('[Vision] BACKEND_URL:', CONFIG.BACKEND_URL);
+    console.log('[Vision] VISION_PROXY_URL:', CONFIG.VISION_PROXY_URL);
+
     showLoading('Gemini Vision AI analyzing mandatory declarations & label authenticity...');
     goToStep(4);
 
     try {
+        console.log('[Vision] → Calling VisionEngine.analyzeLabel()...');
         const response = await VisionEngine.analyzeLabel(scanState.labelImage, scanState.barcodeData);
+
+        console.log('[Vision] ← Raw API response:', JSON.stringify(response, null, 2));
+        console.log('[Vision] response.success:', response?.success);
+        console.log('[Vision] response.simulated:', response?.simulated);
+        console.log('[Vision] response.error:', response?.error);
+        console.log('[Vision] response.data keys:', response?.data ? Object.keys(response.data) : 'NO DATA');
+
         if (response && response.data) {
             scanState.visionData = response.data;
-            const evalResult = ComplianceEngine.evaluateCompliance(
-                response.data,
-                scanState.barcodeData,
-                scanState.calibration
-            );
+            console.log('[Compliance] Running ComplianceEngine.evaluateCompliance()...');
+            const evalResult = ComplianceEngine.evaluateCompliance(response.data, scanState.barcodeData, scanState.calibration);
+            console.log('[Compliance] Result:', JSON.stringify(evalResult, null, 2));
             scanState.complianceReport = evalResult;
 
             renderAiExtractionCards(response.data);
             renderComplianceSummary(evalResult);
+            console.log('[Vision] ✅ Render complete. Step 4 populated.');
         } else {
-            throw new Error('No data received from Vision extraction engine');
+            const errMsg = response?.error || 'No data returned from Vision API';
+            console.error('[Vision] ❌ Empty/invalid response:', response);
+            throw new Error(errMsg);
         }
     } catch (err) {
-        alert('Vision analysis notice: ' + err.message);
+        console.error('[Vision] ❌ Exception during analysis:', err.message, err.stack);
+        alert('Vision analysis error: ' + err.message);
     } finally {
+        console.log('[Vision] Hiding loading overlay...');
         hideLoading();
+        console.groupEnd();
     }
 }
 

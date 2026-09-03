@@ -184,8 +184,12 @@
 
                 <div class="camera-container" style="max-height: 480px;">
                     <img id="capturedLabelPreview" class="camera-preview-img" style="display: none;" alt="Captured Label Preview">
-                    <div id="cameraFeedContainer3">
-                        <!-- Camera feed re-uses video element -->
+                    <div id="cameraFeedContainer3" style="position:absolute;top:0;left:0;width:100%;height:100%;">
+                        <video id="labelCameraFeed" class="camera-video" playsinline autoplay muted width="1280" height="720" style="width:100%;height:100%;object-fit:cover;display:block;background:#111827;"></video>
+                        <div id="labelCameraPlaceholder" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94A3B8;font-size:0.9rem;gap:8px;pointer-events:none;">
+                            <div style="font-size:2rem;">📷</div>
+                            <div>Camera starting for label capture...</div>
+                        </div>
                     </div>
                 </div>
 
