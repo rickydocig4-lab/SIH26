@@ -12,9 +12,12 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const { imageBase64, barcodeData } = req.body || {};
+        const { imageBase64, imageBase64s, barcodeData } = req.body || {};
+        const images = Array.isArray(imageBase64s) && imageBase64s.length
+            ? imageBase64s.slice(0, 4)
+            : (imageBase64 ? [imageBase64] : []);
 
-        if (!imageBase64) {
+        if (!images.length) {
             return res.status(400).json({ error: 'Missing imageBase64 in request body' });
         }
 
@@ -26,16 +29,19 @@ module.exports = async (req, res) => {
             });
         }
 
-        let mimeType = 'image/jpeg';
-        let rawBase64 = imageBase64;
-        const matches = imageBase64.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-        if (matches) {
-            mimeType = matches[1];
-            rawBase64 = matches[2];
-        }
+        const imageParts = images.map(image => {
+            let mimeType = 'image/jpeg';
+            let rawBase64 = image;
+            const matches = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (matches) {
+                mimeType = matches[1];
+                rawBase64 = matches[2];
+            }
+            return { inline_data: { mime_type: mimeType, data: rawBase64 } };
+        });
 
         const promptText = `You are an expert Legal Metrology Enforcement Inspector for the Department of Consumer Affairs (DoCA), Government of India.
-Examine this packaged commodity label image. Perform two simultaneous tasks:
+Examine all supplied photos of the same packaged commodity. Combine evidence across photos and match them as one product. When no barcode is provided, identify the product from visible brand marks, packaging text, product appearance, and consistent declarations across the photos; report conflicts instead of using defaults. Perform two simultaneous tasks:
 1. Extract every mandatory declaration under Rule 6, 7, 8, 9 of the Legal Metrology (Packaged Commodities) Rules, 2011.
 2. If NO barcode is visible or provided, perform LABEL-BASED AUTHENTICITY AUDIT by extracting FSSAI license number (14 digits), manufacturer postal PIN code (6 digits), registered trademark symbols, and consumer grievance contact cell.
 
@@ -64,7 +70,7 @@ JSON Schema:
                     contents: [{
                         parts: [
                             { text: promptText },
-                            { inline_data: { mime_type: mimeType, data: rawBase64 } }
+                            ...imageParts
                         ]
                     }],
                     generationConfig: {

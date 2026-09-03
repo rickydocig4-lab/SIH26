@@ -319,8 +319,8 @@ function addLabelImage(dataUrl) {
     const btnRetake = document.getElementById('btnRetakeLabel');
     const btnRunAi = document.getElementById('btnRunAiCheck');
 
-    if (preview) { preview.src = dataUrl; preview.style.display = 'block'; }
-    if (feedContainer) feedContainer.style.display = 'none';
+    if (preview) { preview.src = dataUrl; preview.style.display = 'none'; }
+    if (feedContainer) feedContainer.style.display = 'block';
     if (btnCapture) {
         btnCapture.style.display = scanState.labelImages.length < 4 ? 'inline-flex' : 'none';
         btnCapture.textContent = scanState.labelImages.length < 4 ? '📸 Add Label Photo' : '📸 Photo Limit Reached';
@@ -340,6 +340,11 @@ function addLabelImage(dataUrl) {
             if (btnRunAi) btnRunAi.disabled = true;
             renderLabelPhotoCollection();
         };
+    }
+    const labelVideo = document.getElementById('labelCameraFeed');
+    if (labelVideo && cameraStream) {
+        labelVideo.srcObject = cameraStream;
+        labelVideo.play().catch(() => {});
     }
     if (btnRunAi) { btnRunAi.disabled = false; btnRunAi.style.opacity = '1'; }
     renderLabelPhotoCollection();
