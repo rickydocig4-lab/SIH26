@@ -529,15 +529,17 @@ function renderComplianceSummary(evalResult) {
 }
 
 function showLoading(msg) {
-    const el = document.getElementById('globalLoadingOverlay');
+    const el = document.getElementById('loadingOverlay') || document.getElementById('globalLoadingOverlay');
     if (el) {
-        const text = el.querySelector('#loadingMessage');
+        const text = document.getElementById('loadingText') || document.getElementById('loadingMessage') || el.querySelector('h3');
         if (text) text.textContent = msg;
         el.style.display = 'flex';
     }
 }
 
 function hideLoading() {
-    const el = document.getElementById('globalLoadingOverlay');
-    if (el) el.style.display = 'none';
+    const el1 = document.getElementById('loadingOverlay');
+    if (el1) el1.style.display = 'none';
+    const el2 = document.getElementById('globalLoadingOverlay');
+    if (el2) el2.style.display = 'none';
 }
