@@ -63,7 +63,7 @@ app.all(['/api/config', '/config'], (req, res) => {
 });
 
 // Multi-Source Barcode & Product Query Endpoint
-app.get('/api/lookup-product', async (req, res) => {
+app.all(['/api/lookup-product', '/lookup-product'], async (req, res) => {
     const { barcode, query } = req.query;
 
     if (!barcode && !query) {
