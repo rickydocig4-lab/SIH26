@@ -1,15 +1,20 @@
-﻿// ============================================================
+// ============================================================
 // CONFIGURATION — Legal Metrology Compliance Checker (Frontend)
 // Problem Statement: SIH26034 (DoCA / MoCA)
 // ============================================================
 
-// Set your deployed Vercel Backend URL here (or http://localhost:5000 for local)
-const DEFAULT_BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000'
-    : 'https://doca-backend.vercel.app'; // <--- Replace with your deployed Vercel Backend URL
+// Read dynamic backend environment config if injected via environment
+const envConfig = (typeof window !== 'undefined' && window.ENV_CONFIG) ? window.ENV_CONFIG : {};
+
+// Priority: 1. Injected ENV BACKEND_URL -> 2. LocalStorage override -> 3. Current Origin / Localhost fallback
+const DEFAULT_BACKEND_URL = envConfig.BACKEND_URL || envConfig.NEXT_PUBLIC_BACKEND_URL || (
+    (typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+        ? 'http://localhost:5000'
+        : 'https://doca-backend.vercel.app'
+);
 
 const CONFIG = {
-    // Backend API Base URL
+    // Backend API Base URL dynamically resolved from environment
     BACKEND_URL: localStorage.getItem('doca_backend_url') || DEFAULT_BACKEND_URL,
 
     get VISION_PROXY_URL() {
