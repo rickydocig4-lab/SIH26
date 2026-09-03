@@ -1,5 +1,5 @@
 ﻿const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -53,7 +53,7 @@ JSON Schema:
 }`;
 
         // Fallback models in case primary model is unavailable or 404
-        const modelsToTry = [PRIMARY_MODEL, 'gemini-1.5-flash', 'gemini-1.5-pro'].filter((v, i, a) => a.indexOf(v) === i);
+        const modelsToTry = [PRIMARY_MODEL, 'gemini-2.5-flash', 'gemini-1.5-pro'].filter((v, i, a) => a.indexOf(v) === i);
         let result = null;
         let lastError = null;
 
