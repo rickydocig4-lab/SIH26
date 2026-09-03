@@ -1,7 +1,0 @@
-﻿{
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/js/env-config.js", "destination": "/api/env-config.js" }
-  ]
-}
