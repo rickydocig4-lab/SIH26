@@ -1,10 +1,10 @@
-﻿{
+{
   "name": "doca-legal-metrology-backend",
   "version": "1.0.0",
   "description": "Department of Consumer Affairs - Legal Metrology Vision API",
-  "main": "server.js",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
