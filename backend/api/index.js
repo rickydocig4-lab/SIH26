@@ -181,8 +181,8 @@ app.all(['/api/lookup-product', '/lookup-product'], async (req, res) => {
     res.json(searchResult);
 });
 
-// Gemini Vision Multimodal Proxy with Label-Based Authenticity Detection
-app.post(['/api/analyze-label', '/analyze-label'], async (req, res) => {
+// Gemini Vision Multimodal Proxy with Label-Based Authenticity Detection (Handles all endpoints and HTTP verbs)
+app.all(['/api/analyze-label', '/analyze-label', '/api/analyze-product', '/analyze-product'], async (req, res) => {
     try {
         const { imageBase64, barcodeData } = req.body;
 
