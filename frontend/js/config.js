@@ -10,12 +10,12 @@ const envConfig = (typeof window !== 'undefined' && window.ENV_CONFIG) ? window.
 const DEFAULT_BACKEND_URL = envConfig.BACKEND_URL || envConfig.NEXT_PUBLIC_BACKEND_URL || (
     (typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
         ? 'http://localhost:5000'
-        : 'https://doca-backend.vercel.app'
+        : 'https://sih26-phi.vercel.app'
 );
 
 const CONFIG = {
     // Backend API Base URL dynamically resolved from environment
-    BACKEND_URL: localStorage.getItem('doca_backend_url') || DEFAULT_BACKEND_URL,
+    BACKEND_URL: DEFAULT_BACKEND_URL,
 
     get VISION_PROXY_URL() {
         return (this.BACKEND_URL || '').replace(/\/$/, '') + '/api/analyze-label';
