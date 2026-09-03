@@ -1,5 +1,5 @@
 ﻿const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -52,49 +52,68 @@ JSON Schema:
   "consumer_care": { "value": "1800-11-4000 / care@doca.gov.in", "present": true }
 }`;
 
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        const payload = {
-            contents: [{
-                parts: [
-                    { text: promptText },
-                    { inline_data: { mime_type: mimeType, data: rawBase64 } }
-                ]
-            }],
-            generationConfig: {
-                temperature: 0.1,
-                topP: 0.95,
-                maxOutputTokens: 2048,
-                responseMimeType: "application/json"
+        // Fallback models in case primary model is unavailable or 404
+        const modelsToTry = [PRIMARY_MODEL, 'gemini-1.5-flash', 'gemini-1.5-pro'].filter((v, i, a) => a.indexOf(v) === i);
+        let result = null;
+        let lastError = null;
+
+        for (const modelName of modelsToTry) {
+            try {
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+                const payload = {
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            { inline_data: { mime_type: mimeType, data: rawBase64 } }
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        topP: 0.95,
+                        maxOutputTokens: 2048,
+                        responseMimeType: "application/json"
+                    }
+                };
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Gemini API (${modelName}) HTTP ${response.status}: ${errText}`);
+                }
+
+                const resData = await response.json();
+                const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (rawText) {
+                    let cleanJson = rawText.trim();
+                    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
+                    if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
+                    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
+                    cleanJson = cleanJson.trim();
+
+                    result = {
+                        success: true,
+                        data: JSON.parse(cleanJson),
+                        modelUsed: modelName,
+                        rawResponse: resData
+                    };
+                    break;
+                }
+            } catch (err) {
+                console.warn(`Model ${modelName} attempt failed:`, err.message);
+                lastError = err;
             }
-        };
-
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Gemini API HTTP ${response.status}: ${errText}`);
         }
 
-        const result = await response.json();
-        const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!rawText) throw new Error('Empty response candidate from Gemini Vision');
+        if (result) {
+            return res.status(200).json(result);
+        }
 
-        let cleanJson = rawText.trim();
-        if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
-        if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
-        if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
-        cleanJson = cleanJson.trim();
-
-        const parsed = JSON.parse(cleanJson);
-        return res.status(200).json({
-            success: true,
-            data: parsed,
-            rawResponse: result
-        });
+        throw lastError || new Error('All Gemini Vision model attempts failed');
 
     } catch (err) {
         console.error('API Error in analyze-label:', err.message);

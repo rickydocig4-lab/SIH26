@@ -11,7 +11,7 @@
     return res.status(200).json({
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsajwevjuuvgobaiouuc.supabase.co',
         supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_7QJ8KsPhW7Rw__emdD-axA_r4VfezAx',
-        geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+        geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
         appName: 'AI Legal Metrology Compliance & Authenticity Checker'
     });
 };
