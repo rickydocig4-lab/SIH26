@@ -1,25 +1,17 @@
 ﻿// ============================================================
 // CONFIGURATION — Legal Metrology Compliance Checker (Frontend)
 // Problem Statement: SIH26034 (DoCA / MoCA)
-// Zero hardcoded backend URLs — resolves from environment variables
+// Pure Vanilla JS Compatible (No import.meta syntax errors)
 // ============================================================
 
 function getEnvVar(name) {
-    // 1. Vite environment variables (import.meta.env.VITE_...)
-    try {
-        if (typeof import.meta !== 'undefined' && import.meta && import.meta.env) {
-            if (import.meta.env[name]) return import.meta.env[name];
-            if (import.meta.env['VITE_' + name]) return import.meta.env['VITE_' + name];
-        }
-    } catch (e) {}
-
-    // 2. Window runtime environment injection (window.ENV_CONFIG)
+    // 1. Window runtime environment injection (window.ENV_CONFIG)
     if (typeof window !== 'undefined' && window.ENV_CONFIG) {
         if (window.ENV_CONFIG[name]) return window.ENV_CONFIG[name];
         if (window.ENV_CONFIG['VITE_' + name]) return window.ENV_CONFIG['VITE_' + name];
     }
 
-    // 3. Process environment variables
+    // 2. Process environment variables
     if (typeof window !== 'undefined' && window.process && window.process.env) {
         if (window.process.env[name]) return window.process.env[name];
         if (window.process.env['VITE_' + name]) return window.process.env['VITE_' + name];
@@ -28,13 +20,15 @@ function getEnvVar(name) {
     return null;
 }
 
-// Dynamically resolve Backend URL with ZERO hardcoded production fallback strings
+// Dynamically resolve Backend URL
 const DYNAMIC_BACKEND_URL = 
     getEnvVar('VITE_BACKEND_URL') ||
     getEnvVar('BACKEND_URL') ||
     getEnvVar('NEXT_PUBLIC_BACKEND_URL') ||
     (typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('doca_backend_url') : null) ||
-    ((typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '');
+    ((typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) 
+        ? 'http://localhost:5000' 
+        : 'https://sih26-phi.vercel.app');
 
 const CONFIG = {
     // Backend API Base URL dynamically resolved from environment
