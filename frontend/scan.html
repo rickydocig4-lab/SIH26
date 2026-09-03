@@ -199,11 +199,18 @@
                     </button>
                     <label class="btn btn-outline-primary btn-lg" style="margin: 0; cursor: pointer;">
                         📁 Upload Label Photo
-                        <input type="file" id="fileUploadLabel" accept="image/*" style="display: none;">
+                        <input type="file" id="fileUploadLabel" accept="image/*" multiple style="display: none;">
                     </label>
                     <button type="button" id="btnRetakeLabel" class="btn btn-danger" style="display: none;">
                         🔄 Retake Snapshot
                     </button>
+                </div>
+                <div id="labelPhotoCollection" style="display: none; margin: 0 auto 20px; max-width: 680px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong>Inspection photos</strong>
+                        <span id="labelPhotoCount" class="text-secondary small">0 / 4</span>
+                    </div>
+                    <div id="labelPhotoThumbnails" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;"></div>
                 </div>
 
                 <!-- Calibration Marker Tool (Rule 7 Font Size Measurement) -->

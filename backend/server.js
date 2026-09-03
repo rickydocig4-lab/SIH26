@@ -33,9 +33,12 @@ app.get('/api/config', (req, res) => {
 
 app.post('/api/analyze-label', async (req, res) => {
     try {
-        const { imageBase64, barcodeData } = req.body;
+        const { imageBase64, imageBase64s, barcodeData } = req.body;
+        const images = Array.isArray(imageBase64s) && imageBase64s.length
+            ? imageBase64s.slice(0, 4)
+            : (imageBase64 ? [imageBase64] : []);
 
-        if (!imageBase64) {
+        if (!images.length) {
             return res.status(400).json({ error: 'Missing imageBase64' });
         }
 
@@ -47,16 +50,19 @@ app.post('/api/analyze-label', async (req, res) => {
             });
         }
 
-        let mimeType = 'image/jpeg';
-        let rawBase64 = imageBase64;
-        const matches = imageBase64.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-        if (matches) {
-            mimeType = matches[1];
-            rawBase64 = matches[2];
-        }
+        const imageParts = images.map(image => {
+            let mimeType = 'image/jpeg';
+            let rawBase64 = image;
+            const matches = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (matches) {
+                mimeType = matches[1];
+                rawBase64 = matches[2];
+            }
+            return { inline_data: { mime_type: mimeType, data: rawBase64 } };
+        });
 
         const promptText = `You are an expert Legal Metrology Enforcement Inspector for the Department of Consumer Affairs (DoCA), Government of India.
-Examine this packaged commodity label image and evaluate mandatory declarations under the Legal Metrology Act, 2009 and Legal Metrology (Packaged Commodities) Rules, 2011.
+Examine all supplied photos of the same packaged commodity and evaluate mandatory declarations under the Legal Metrology Act, 2009 and Legal Metrology (Packaged Commodities) Rules, 2011. Combine evidence across photos: identify the product, manufacturer, quantity, dates, MRP, consumer-care details, and country of origin. When barcode data is absent, identify and match the product using visible packaging text, brand marks, product appearance, and consistent declarations across the photos. Do not treat multiple views as different products unless they conflict; report conflicts in general_observations.
 Extract each mandatory declaration and return ONLY a valid, raw JSON object (without markdown fences, raw JSON only).
 JSON Schema:
 {
@@ -79,10 +85,7 @@ JSON Schema:
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
         const payload = {
             contents: [{
-                parts: [
-                    { text: promptText },
-                    { inline_data: { mime_type: mimeType, data: rawBase64 } }
-                ]
+                parts: [{ text: promptText }, ...imageParts]
             }],
             generationConfig: {
                 temperature: 0.1,

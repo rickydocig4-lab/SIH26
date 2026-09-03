@@ -6,13 +6,15 @@
 const VisionEngine = {
     async analyzeLabel(imageBase64, barcodeData = null) {
         const endpoint = CONFIG.VISION_PROXY_URL;
+        const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
 
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    imageBase64,
+                    imageBase64: images[0],
+                    imageBase64s: images,
                     barcodeData
                 })
             });

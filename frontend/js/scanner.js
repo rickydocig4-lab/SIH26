@@ -11,6 +11,7 @@ let isDetectingBarcode = true;
 const scanState = {
     barcodeData: null,
     labelImage: null,
+    labelImages: [],
     calibration: {
         method: 'credit_card',
         cardWidthMm: 85.6,
@@ -272,6 +273,10 @@ function renderBarcodeVerification(res) {
 }
 
 function captureLabelPhoto() {
+    if (scanState.labelImages.length >= 4) {
+        alert('You can add up to 4 inspection photos.');
+        return;
+    }
     const video = document.getElementById('labelCameraFeed') || document.getElementById('cameraFeed');
     if (!video || (!video.videoWidth && !video.srcObject)) {
         console.warn('[Camera] No active camera stream to capture from');
@@ -285,24 +290,27 @@ function captureLabelPhoto() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     console.log('[Camera] Label photo captured. Size:', Math.round(dataUrl.length / 1024), 'KB');
-    setLabelImage(dataUrl);
+    addLabelImage(dataUrl);
 }
 
 function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    console.log('[Upload] File selected:', file.name, file.type, Math.round(file.size / 1024), 'KB');
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        console.log('[Upload] File read complete. Setting label image...');
-        setLabelImage(event.target.result);
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    const availableSlots = 4 - scanState.labelImages.length;
+    if (!files.length || availableSlots <= 0) return;
+    files.slice(0, availableSlots).forEach(file => {
+        console.log('[Upload] File selected:', file.name, file.type, Math.round(file.size / 1024), 'KB');
+        const reader = new FileReader();
+        reader.onload = event => addLabelImage(event.target.result);
+        reader.readAsDataURL(file);
+    });
+    e.target.value = '';
 }
 
-function setLabelImage(dataUrl) {
+function addLabelImage(dataUrl) {
     console.log('[Label] setLabelImage called. Data length:', Math.round(dataUrl.length / 1024), 'KB');
-    scanState.labelImage = dataUrl;
+    if (scanState.labelImages.length >= 4) return;
+    scanState.labelImages.push(dataUrl);
+    scanState.labelImage = scanState.labelImages[0];
 
     const preview = document.getElementById('capturedLabelPreview');
     // Step 3 has its own camera container wrapper - check both IDs
@@ -313,20 +321,46 @@ function setLabelImage(dataUrl) {
 
     if (preview) { preview.src = dataUrl; preview.style.display = 'block'; }
     if (feedContainer) feedContainer.style.display = 'none';
-    if (btnCapture) btnCapture.style.display = 'none';
+    if (btnCapture) {
+        btnCapture.style.display = scanState.labelImages.length < 4 ? 'inline-flex' : 'none';
+        btnCapture.textContent = scanState.labelImages.length < 4 ? '📸 Add Label Photo' : '📸 Photo Limit Reached';
+    }
     if (btnRetake) {
         btnRetake.style.display = 'inline-flex';
         btnRetake.onclick = () => {
             scanState.labelImage = null;
+            scanState.labelImages = [];
             if (preview) preview.style.display = 'none';
             if (feedContainer) feedContainer.style.display = 'block';
-            if (btnCapture) btnCapture.style.display = 'inline-flex';
+            if (btnCapture) {
+                btnCapture.style.display = 'inline-flex';
+                btnCapture.textContent = '📸 Take Label Snapshot';
+            }
             if (btnRetake) btnRetake.style.display = 'none';
             if (btnRunAi) btnRunAi.disabled = true;
+            renderLabelPhotoCollection();
         };
     }
     if (btnRunAi) { btnRunAi.disabled = false; btnRunAi.style.opacity = '1'; }
+    renderLabelPhotoCollection();
     console.log('[Label] Label image set. AI button enabled.');
+}
+
+function renderLabelPhotoCollection() {
+    const collection = document.getElementById('labelPhotoCollection');
+    const thumbnails = document.getElementById('labelPhotoThumbnails');
+    const count = document.getElementById('labelPhotoCount');
+    if (!collection || !thumbnails || !count) return;
+    count.textContent = `${scanState.labelImages.length} / 4`;
+    collection.style.display = scanState.labelImages.length ? 'block' : 'none';
+    thumbnails.innerHTML = '';
+    scanState.labelImages.forEach((image, index) => {
+        const thumbnail = document.createElement('img');
+        thumbnail.src = image;
+        thumbnail.alt = `Inspection photo ${index + 1}`;
+        thumbnail.style.cssText = 'width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid #CBD5E1;';
+        thumbnails.appendChild(thumbnail);
+    });
 }
 
 function updateCalibrationRatio() {

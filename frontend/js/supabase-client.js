@@ -41,6 +41,22 @@ const LocalStorageDB = {
     }
 };
 
+function normalizeAuthenticityStatus(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'authentic' || normalized === 'verified') return 'verified';
+    if (normalized.includes('counterfeit') || normalized === 'mismatch') return 'mismatch';
+    if (normalized === 'unauthenticated' || normalized === 'unverified') return 'unverified';
+    return 'na';
+}
+
+function normalizeOverallStatus(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'compliant') return 'compliant';
+    if (normalized === 'warning' || normalized === 'partial_compliance') return 'warning';
+    if (normalized === 'non_compliant') return 'non_compliant';
+    return 'pending';
+}
+
 const DB = {
     async getCurrentUser() {
         const client = getSupabase();
@@ -89,10 +105,34 @@ const DB = {
 
     async saveCompleteScan(scanData, declarations = [], violations = []) {
         const client = getSupabase();
-        const scanId = scanData.id || ('scan-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
+        const scanId = scanData.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(scanData.id)
+            ? scanData.id
+            : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString().padStart(12, '0'));
         const scanRecord = {
-            ...scanData,
             id: scanId,
+            barcode: scanData.barcode || null,
+            db_product_name: scanData.db_product_name || null,
+            db_manufacturer: scanData.db_manufacturer || scanData.brand || null,
+            extracted_product_name: scanData.extracted_product_name || scanData.product_name || scanData.vision_raw?.product_name?.value || null,
+            extracted_manufacturer: scanData.extracted_manufacturer || scanData.brand || scanData.vision_raw?.manufacturer_name?.value || null,
+            extracted_mrp: scanData.extracted_mrp || scanData.vision_raw?.mrp?.value || null,
+            extracted_address: scanData.extracted_address || scanData.vision_raw?.manufacturer_address?.value || null,
+            extracted_mfg_date: scanData.extracted_mfg_date || scanData.vision_raw?.mfg_date?.value || null,
+            extracted_net_qty: scanData.extracted_net_qty || scanData.vision_raw?.net_quantity?.value || null,
+            extracted_consumer_care: scanData.extracted_consumer_care || scanData.vision_raw?.consumer_care?.value || null,
+            extracted_country_origin: scanData.extracted_country_origin || scanData.vision_raw?.country_of_origin?.value || null,
+            extracted_language: scanData.extracted_language || scanData.vision_raw?.language_detected || 'English',
+            barcode_valid: Boolean(scanData.barcode_valid),
+            barcode_registered: Boolean(scanData.barcode_registered),
+            image_url: scanData.image_url || null,
+            raw_gemini_response: scanData.raw_gemini_response || scanData.vision_raw || {},
+            db_raw_response: scanData.db_raw_response || scanData.barcode_data || {},
+            overall_status: normalizeOverallStatus(scanData.overall_status || scanData.compliance_status),
+            compliance_score: Number(scanData.compliance_score ?? scanData.overall_score ?? 0),
+            violation_count: violations.length,
+            warning_count: violations.filter(v => v.severity === 'warning').length,
+            authenticity_status: normalizeAuthenticityStatus(scanData.authenticity_status),
+            authenticity_notes: scanData.authenticity_notes || null,
             updated_at: new Date().toISOString()
         };
 
@@ -113,12 +153,34 @@ const DB = {
                 if (scanErr) console.warn('Supabase scan upsert note:', scanErr.message);
 
                 if (declarations.length > 0) {
-                    const decRecords = declarations.map(d => ({ ...d, scan_id: scanId }));
+                    const decRecords = declarations.map(d => ({
+                        scan_id: scanId,
+                        declaration_type: d.declaration_type || d.rule_ref || 'unknown',
+                        label: d.label || d.name || 'Declaration',
+                        rule_reference: d.rule_reference || d.rule_ref || 'Rule 6',
+                        value_extracted: d.value_extracted ?? d.value ?? null,
+                        confidence: Number(d.confidence || 0),
+                        present: Boolean(d.present),
+                        compliant: d.compliant ?? d.status === 'compliant',
+                        bounding_box: d.bounding_box || null,
+                        measured_font_size_mm: d.measured_font_size_mm || null,
+                        min_required_font_size_mm: d.min_required_font_size_mm || null,
+                        notes: d.notes || null
+                    }));
                     await client.from('declarations').upsert(decRecords);
                 }
 
                 if (violations.length > 0) {
-                    const vioRecords = violations.map(v => ({ ...v, scan_id: scanId }));
+                    const vioRecords = violations.map(v => ({
+                        scan_id: scanId,
+                        rule_reference: v.rule_reference || v.rule_ref || 'Compliance Check',
+                        title: v.title || v.rule_name || 'Compliance Violation',
+                        description: v.description || 'Statutory requirement not satisfied.',
+                        severity: ['critical', 'warning', 'info'].includes(v.severity) ? v.severity : 'critical',
+                        declaration_type: v.declaration_type || null,
+                        penalty_section: v.penalty_section || v.penalty_provision || null,
+                        suggestion: v.suggestion || null
+                    }));
                     await client.from('violations').upsert(vioRecords);
                 }
             } catch (e) {
