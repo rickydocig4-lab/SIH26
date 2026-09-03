@@ -185,8 +185,8 @@ function getSimulatedExtraction(barcodeData) {
 // Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
-// Export for Vercel Serverless Function runtime and start locally if not imported
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+// Start standalone HTTP listener only when run directly with `node server.js`
+if (require.main === module) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`====================================================`);
         console.log(`🏛️ Legal Metrology Compliance Server (SIH26034)`);
