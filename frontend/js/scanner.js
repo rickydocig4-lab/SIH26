@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // SCANNER CONTROLLER (Step-by-Step Inspection Wizard)
 // Handles Camera, Multi-Source Barcode, Label Capture & AI Run
 // ============================================================
@@ -99,6 +99,13 @@ function goToStep(step) {
 async function initCamera() {
     const video = document.getElementById('cameraFeed');
     const status = document.getElementById('cameraStatus');
+    const placeholder = document.getElementById('cameraPlaceholder');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (placeholder) placeholder.innerHTML = '<div style="font-size:1.8rem">⚠️</div><div>Camera API unavailable. Use file upload below.</div>';
+        if (status) status.innerHTML = '<span class="badge badge-warning">⚠️ Camera not supported in this browser</span>';
+        return;
+    }
 
     try {
         cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -112,17 +119,33 @@ async function initCamera() {
 
         if (video) {
             video.srcObject = cameraStream;
-            video.onloadedmetadata = () => {
-                video.play().catch(()=>{});
-                initBarcodeDetector();
-            };
+
+            await new Promise((resolve) => {
+                video.onloadedmetadata = resolve;
+            });
+
+            try {
+                await video.play();
+            } catch (playErr) {
+                video.muted = true;
+                await video.play();
+            }
+
+            if (placeholder) placeholder.style.display = 'none';
+            if (status) status.innerHTML = '<span class="badge badge-success">📷 Camera Live</span>';
+            initBarcodeDetector();
         }
-        if (status) status.innerHTML = '<span class="badge badge-success">📷 Camera Live (High-Res)</span>';
     } catch (err) {
-        console.warn('Camera access denied/failed, enabling manual upload fallback:', err.message);
-        if (status) {
-            status.innerHTML = '<span class="badge badge-warning">⚠️ Camera inaccessible. Use file upload below.</span>';
+        console.warn('Camera access error:', err.name, err.message);
+        if (placeholder) {
+            placeholder.innerHTML = `
+                <div style="font-size:1.8rem">🚫</div>
+                <div style="text-align:center;padding:0 20px;">
+                    Camera permission denied.<br>
+                    <span style="font-size:0.8rem;opacity:0.7;">Allow camera in browser settings, or use file upload below.</span>
+                </div>`;
         }
+        if (status) status.innerHTML = `<span class="badge badge-warning">⚠️ Camera denied — use file upload</span>`;
     }
 }
 

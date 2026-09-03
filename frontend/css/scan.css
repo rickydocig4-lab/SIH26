@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    SCANNER & CAMERA WORKFLOW STYLES
    ============================================================ */
 
@@ -97,18 +97,27 @@
     position: relative;
     width: 100%;
     max-width: 680px;
+    min-height: 280px;
     margin: 0 auto 20px auto;
-    background: #000000;
+    background: #111827;
     border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: var(--shadow-lg);
     aspect-ratio: 4/3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .camera-video {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+    background: #111827;
 }
 
 .camera-preview-img {
