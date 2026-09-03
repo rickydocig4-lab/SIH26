@@ -1,102 +1,137 @@
 ﻿// ============================================================
-// SCANNER CONTROLLER (Camera, Barcode, Calibration & AI Flow)
+// SCANNER CONTROLLER (Step-by-Step Inspection Wizard)
+// Handles Camera, Multi-Source Barcode, Label Capture & AI Run
 // ============================================================
 
-let currentStream = null;
+let currentStep = 1;
+let cameraStream = null;
 let barcodeDetector = null;
 let isDetectingBarcode = true;
-let scanState = {
+
+const scanState = {
     barcodeData: null,
     labelImage: null,
-    calibrationRatio: 25.0, // default ~25 px/mm for standard smartphone camera at 20cm
-    visionResult: null,
-    complianceResult: null,
-    officer: null,
-    storeName: '',
-    location: 'Market Inspection, New Delhi'
+    calibration: {
+        method: 'credit_card',
+        cardWidthMm: 85.6,
+        cardPixelWidth: 320,
+        pxPerMm: 3.73
+    },
+    visionData: null,
+    complianceReport: null
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Check current logged-in officer/admin
-    scanState.officer = await DB.getCurrentUser();
-    const officerNameEl = document.getElementById('officerNameDisplay');
-    const badgeEl = document.getElementById('badgeDisplay');
-    if (officerNameEl) officerNameEl.textContent = scanState.officer.name;
-    if (badgeEl) badgeEl.textContent = scanState.officer.badge_number;
-
-    // 2. Initialize native BarcodeDetector API if supported
-    if ('BarcodeDetector' in window) {
-        try {
-            barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code', 'code_128'] });
-        } catch(e) {
-            console.warn('BarcodeDetector format error:', e);
-        }
+    // Enforce Officer / Admin Auth
+    const profile = await SupabaseService.getProfile();
+    if (!profile) {
+        window.location.href = 'login.html';
+        return;
     }
+    document.getElementById('officerBadge').textContent = `Officer: ${profile.full_name || 'Enforcement Inspector'} (${profile.role})`;
 
-    // 3. Attach UI event handlers
-    setupEventListeners();
-
-    // 4. Start live camera stream
-    startCamera();
+    initWizardNav();
+    initCamera();
+    initStepHandlers();
 });
 
-function setupEventListeners() {
-    // Step 1: Barcode actions
-    document.getElementById('btnManualBarcode')?.addEventListener('click', () => {
-        const manualCode = prompt('Enter 8, 12, or 13-digit Barcode (e.g. 8901030383854):', '8901030383854');
-        if (manualCode) processBarcode(manualCode.trim());
+function initWizardNav() {
+    document.querySelectorAll('.wizard-step').forEach(stepEl => {
+        stepEl.addEventListener('click', () => {
+            const stepNum = parseInt(stepEl.getAttribute('data-step'), 10);
+            if (canNavigateToStep(stepNum)) {
+                goToStep(stepNum);
+            }
+        });
     });
-
-    document.getElementById('btnSkipBarcode')?.addEventListener('click', () => {
-        scanState.barcodeData = { barcode: null, isValid: false, isRegistered: false, source: 'skipped' };
-        goToStep(2);
-    });
-
-    // Step 2: Confirm product and proceed
-    document.getElementById('btnProceedToLabel')?.addEventListener('click', () => {
-        goToStep(3);
-    });
-
-    // Step 3: Capture label photo & calibration
-    document.getElementById('btnCaptureLabel')?.addEventListener('click', captureLabelPhoto);
-    document.getElementById('fileUploadLabel')?.addEventListener('change', handleFileUpload);
-
-    // Calibration adjustments
-    document.getElementById('inputCalibrationMm')?.addEventListener('input', updateCalibrationRatio);
-    document.getElementById('inputCalibrationPx')?.addEventListener('input', updateCalibrationRatio);
-    document.getElementById('btnApplyCalibration')?.addEventListener('click', () => {
-        alert('Calibration Ratio applied: ' + scanState.calibrationRatio.toFixed(1) + ' px/mm');
-    });
-
-    // Step 4: Run AI Compliance Check
-    document.getElementById('btnRunAiCheck')?.addEventListener('click', runAiAnalysis);
-
-    // Step 5: Save & navigate to Report
-    document.getElementById('btnSaveAndReport')?.addEventListener('click', saveAndNavigateReport);
-    document.getElementById('btnNewScan')?.addEventListener('click', () => window.location.reload());
 }
 
-async function startCamera() {
+function canNavigateToStep(step) {
+    if (step <= currentStep) return true;
+    if (step === 2 && scanState.barcodeData) return true;
+    if (step === 3 && (scanState.barcodeData || currentStep >= 1)) return true;
+    if (step === 4 && scanState.labelImage) return true;
+    if (step === 5 && scanState.complianceReport) return true;
+    return false;
+}
+
+function goToStep(step) {
+    currentStep = step;
+    document.querySelectorAll('.wizard-step').forEach(el => {
+        const s = parseInt(el.getAttribute('data-step'), 10);
+        el.classList.remove('active', 'completed');
+        if (s === step) el.classList.add('active');
+        else if (s < step) el.classList.add('completed');
+    });
+
+    document.querySelectorAll('.wizard-step-content').forEach(el => el.classList.remove('active'));
+    const targetContent = document.getElementById(`stepContent${step}`);
+    if (targetContent) targetContent.classList.add('active');
+
     const video = document.getElementById('cameraFeed');
-    if (!video) return;
+    const container = document.getElementById('cameraFeedContainer');
+    const preview = document.getElementById('capturedLabelPreview');
+
+    if (step === 1) {
+        isDetectingBarcode = true;
+        if (container) container.style.display = 'block';
+        if (preview) preview.style.display = 'none';
+        if (video && cameraStream) {
+            video.srcObject = cameraStream;
+            video.play().catch(()=>{});
+        }
+        barcodeDetectionLoop();
+    } else if (step === 3) {
+        isDetectingBarcode = false;
+        if (!scanState.labelImage) {
+            if (container) container.style.display = 'block';
+            if (preview) preview.style.display = 'none';
+            if (video && cameraStream) {
+                video.srcObject = cameraStream;
+                video.play().catch(()=>{});
+            }
+        }
+    } else {
+        isDetectingBarcode = false;
+    }
+}
+
+async function initCamera() {
+    const video = document.getElementById('cameraFeed');
+    const status = document.getElementById('cameraStatus');
 
     try {
-        currentStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
             audio: false
         });
-        video.srcObject = currentStream;
-        await video.play();
 
-        // Start continuous barcode scanning loop
-        isDetectingBarcode = true;
-        requestAnimationFrame(barcodeDetectionLoop);
-    } catch (err) {
-        console.warn('Camera stream error:', err);
-        const statusEl = document.getElementById('cameraStatus');
-        if (statusEl) {
-            statusEl.innerHTML = '<span style="color:#d97706;">⚠️ Camera not accessible. You can upload an image or enter barcode manually.</span>';
+        if (video) {
+            video.srcObject = cameraStream;
+            video.onloadedmetadata = () => {
+                video.play().catch(()=>{});
+                initBarcodeDetector();
+            };
         }
+        if (status) status.innerHTML = '<span class="badge badge-success">📷 Camera Live (High-Res)</span>';
+    } catch (err) {
+        console.warn('Camera access denied/failed, enabling manual upload fallback:', err.message);
+        if (status) {
+            status.innerHTML = '<span class="badge badge-warning">⚠️ Camera inaccessible. Use file upload below.</span>';
+        }
+    }
+}
+
+function initBarcodeDetector() {
+    if ('BarcodeDetector' in window) {
+        barcodeDetector = new BarcodeDetector({
+            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code']
+        });
+        barcodeDetectionLoop();
     }
 }
 
@@ -125,7 +160,7 @@ function highlightBarcodeTarget() {
 }
 
 async function processBarcode(code) {
-    showLoading('Validating barcode & querying product registry...');
+    showLoading('Validating GS1 barcode across multiple registries...');
     const result = await BarcodeEngine.lookupProduct(code);
     scanState.barcodeData = result;
     hideLoading();
@@ -138,16 +173,20 @@ function renderBarcodeVerification(res) {
     const bcEl = document.getElementById('displayBarcode');
     const bcTypeEl = document.getElementById('displayBarcodeType');
     if (bcEl) bcEl.textContent = res.barcode || 'N/A';
-    if (bcTypeEl) bcTypeEl.textContent = res.type;
+    if (bcTypeEl) {
+        bcTypeEl.textContent = res.gs1Allocation 
+            ? `${res.gs1Allocation.country} (Prefix ${res.gs1Allocation.prefix})`
+            : 'Standard EAN/GTIN';
+    }
 
     const checkBadge = document.getElementById('badgeCheckDigit');
     if (checkBadge) {
-        if (res.isValid) {
+        if (res.isValidCheckDigit) {
             checkBadge.className = 'badge badge-success';
-            checkBadge.textContent = '✓ Check-Digit Valid';
+            checkBadge.textContent = '✓ Check-Digit Valid (Modulo 10)';
         } else {
-            checkBadge.className = 'badge badge-danger';
-            checkBadge.textContent = '✗ Invalid Check-Digit';
+            checkBadge.className = 'badge badge-warning';
+            checkBadge.textContent = '⚠️ Unchecked Check-Digit';
         }
     }
 
@@ -158,21 +197,36 @@ function renderBarcodeVerification(res) {
     if (res.isRegistered) {
         if (regBadge) {
             regBadge.className = 'badge badge-success';
-            regBadge.textContent = '✓ Registered in Database';
+            regBadge.textContent = `✓ Verified (${res.sourcesConfirmed.join(', ')})`;
         }
         document.getElementById('dbProductName').textContent = res.productName || 'N/A';
         document.getElementById('dbManufacturer').textContent = res.manufacturer || res.brand || 'N/A';
         document.getElementById('dbMrp').textContent = res.mrp || 'N/A';
-        document.getElementById('dbSource').textContent = res.source;
+        document.getElementById('dbSource').textContent = res.sourcesConfirmed.join(' + ') || 'GS1 / Open Food Facts';
         if (dbCard) dbCard.style.display = 'block';
         if (unregNote) unregNote.style.display = 'none';
+    } else if (res.verificationStatus === 'gs1_prefix_verified') {
+        if (regBadge) {
+            regBadge.className = 'badge badge-info';
+            regBadge.style.background = '#0284C7';
+            regBadge.style.color = '#FFFFFF';
+            regBadge.textContent = `✓ GS1 Allocated Prefix (${res.gs1Allocation.country})`;
+        }
+        if (dbCard) dbCard.style.display = 'none';
+        if (unregNote) {
+            unregNote.style.display = 'block';
+            unregNote.innerHTML = `<strong>GS1 Country Allocation Verified:</strong> Barcode prefix <code>${res.gs1Allocation.prefix}</code> is assigned to <strong>${res.gs1Allocation.country}</strong> with valid Modulo-10 checksum. Specific SKU is unindexed in open public crowdsourced DBs. Multimodal AI will perform full label authenticity audit in Step 4.`;
+        }
     } else {
         if (regBadge) {
             regBadge.className = 'badge badge-warning';
-            regBadge.textContent = '⚠️ Unregistered Barcode';
+            regBadge.textContent = '⚠️ Unindexed in Public Catalogs';
         }
         if (dbCard) dbCard.style.display = 'none';
-        if (unregNote) unregNote.style.display = 'block';
+        if (unregNote) {
+            unregNote.style.display = 'block';
+            unregNote.innerHTML = `<strong>Multi-Source Note:</strong> Checked multiple registries (${res.sourcesChecked.join(', ')}). Proceeding to label capture for AI-driven label authenticity evaluation.`;
+        }
     }
 }
 
@@ -228,209 +282,233 @@ function setLabelImage(dataUrl) {
 }
 
 function updateCalibrationRatio() {
-    const mm = parseFloat(document.getElementById('inputCalibrationMm')?.value || '50');
-    const px = parseFloat(document.getElementById('inputCalibrationPx')?.value || '1250');
-    if (mm > 0 && px > 0) {
-        scanState.calibrationRatio = px / mm;
-        const disp = document.getElementById('displayPxPerMm');
-        if (disp) disp.textContent = scanState.calibrationRatio.toFixed(1) + ' px/mm';
+    const slider = document.getElementById('calibrationSlider');
+    const cardPx = parseInt(slider.value, 10);
+    document.getElementById('calibPxDisplay').textContent = `${cardPx} px`;
+    scanState.calibration.cardPixelWidth = cardPx;
+    scanState.calibration.pxPerMm = cardPx / scanState.calibration.cardWidthMm;
+    const dpi = Math.round(scanState.calibration.pxPerMm * 25.4);
+    document.getElementById('computedDpiDisplay').textContent = `${dpi} DPI (${scanState.calibration.pxPerMm.toFixed(2)} px/mm)`;
+}
+
+function initStepHandlers() {
+    // Step 1: Manual Barcode / Skip
+    const btnManual = document.getElementById('btnManualBarcode');
+    if (btnManual) {
+        btnManual.onclick = () => {
+            const input = prompt('Enter 8, 12, 13 or 14-digit GTIN / EAN barcode:');
+            if (input && input.trim().length >= 8) {
+                processBarcode(input.trim());
+            }
+        };
+    }
+
+    const btnSkip = document.getElementById('btnSkipBarcode');
+    if (btnSkip) {
+        btnSkip.onclick = () => {
+            isDetectingBarcode = false;
+            scanState.barcodeData = {
+                barcode: null,
+                isRegistered: false,
+                verificationStatus: 'label_lookup_mode',
+                proofSummary: 'No Barcode present — Initiating Label-Identified Authenticity Fallback Mode'
+            };
+            goToStep(3);
+        };
+    }
+
+    // Step 2: Continue to Step 3
+    const btnProceedLabel = document.getElementById('btnProceedToLabel');
+    if (btnProceedLabel) {
+        btnProceedLabel.onclick = () => goToStep(3);
+    }
+
+    // Step 3: Capture & File Upload
+    const btnCap = document.getElementById('btnCaptureLabel');
+    if (btnCap) btnCap.onclick = captureLabelPhoto;
+
+    const fileInput = document.getElementById('labelFileInput');
+    if (fileInput) fileInput.onchange = handleFileUpload;
+
+    const slider = document.getElementById('calibrationSlider');
+    if (slider) slider.oninput = updateCalibrationRatio;
+
+    // Step 3: Run AI Check
+    const btnRun = document.getElementById('btnRunAiCheck');
+    if (btnRun) {
+        btnRun.onclick = async () => {
+            if (!scanState.labelImage) {
+                alert('Please capture or upload a label photo first.');
+                return;
+            }
+            await runMultimodalAnalysis();
+        };
+    }
+
+    // Step 4: Proceed to final summary
+    const btnProceedReport = document.getElementById('btnProceedToReport');
+    if (btnProceedReport) {
+        btnProceedReport.onclick = () => goToStep(5);
+    }
+
+    // Step 5: Save & View Detailed Legal Dossier
+    const btnSave = document.getElementById('btnSaveAndGenerateDossier');
+    if (btnSave) {
+        btnSave.onclick = async () => {
+            showLoading('Saving inspection record to Supabase database...');
+            const record = {
+                product_name: scanState.visionData?.product_name?.value || scanState.barcodeData?.productName || 'Inspected Commodity',
+                brand: scanState.visionData?.manufacturer_name?.value || scanState.barcodeData?.brand || 'Unknown',
+                barcode: scanState.barcodeData?.barcode || null,
+                overall_score: scanState.complianceReport?.overall_score || 0,
+                compliance_status: scanState.complianceReport?.compliance_status || 'NON_COMPLIANT',
+                authenticity_status: scanState.complianceReport?.authenticity_status || 'AUTHENTIC',
+                authenticity_score: scanState.complianceReport?.authenticity_score || 90,
+                authenticity_remarks: scanState.complianceReport?.authenticity_remarks || [],
+                declarations: scanState.complianceReport?.declarations || [],
+                violations: scanState.complianceReport?.violations || [],
+                vision_raw: scanState.visionData || {},
+                barcode_data: scanState.barcodeData || {},
+                image_url: scanState.labelImage
+            };
+
+            const saved = await SupabaseService.saveScan(record);
+            hideLoading();
+            if (saved && saved.id) {
+                window.location.href = `report.html?id=${saved.id}`;
+            } else {
+                alert('Inspection saved locally in cache.');
+                window.location.href = 'report.html';
+            }
+        };
     }
 }
 
-async function runAiAnalysis() {
-    if (!scanState.labelImage) {
-        alert('Please capture or upload a label photo first.');
-        return;
-    }
-
+async function runMultimodalAnalysis() {
+    showLoading('Gemini Vision AI analyzing mandatory declarations & label authenticity...');
     goToStep(4);
-    showLoading('Multimodal Gemini Vision is analyzing Legal Metrology declarations...');
 
     try {
-        const vision = await VisionEngine.analyzeLabel(scanState.labelImage, scanState.barcodeData);
-        scanState.visionResult = vision.data;
+        const response = await VisionEngine.analyzeLabel(scanState.labelImage, scanState.barcodeData);
+        if (response && response.data) {
+            scanState.visionData = response.data;
+            const evalResult = ComplianceEngine.evaluateCompliance(
+                response.data,
+                scanState.barcodeData,
+                scanState.calibration
+            );
+            scanState.complianceReport = evalResult;
 
-        // Run Rule Engine
-        const compliance = ComplianceEngine.evaluate(
-            vision.data,
-            scanState.barcodeData,
-            scanState.calibrationRatio
-        );
-        scanState.complianceResult = compliance;
-
-        hideLoading();
-        renderComplianceResults(compliance, vision.data);
-        goToStep(5);
+            renderAiExtractionCards(response.data);
+            renderComplianceSummary(evalResult);
+        } else {
+            throw new Error('No data received from Vision extraction engine');
+        }
     } catch (err) {
+        alert('Vision analysis notice: ' + err.message);
+    } finally {
         hideLoading();
-        alert('Analysis error: ' + err.message);
     }
 }
 
-function renderComplianceResults(comp, visionData) {
-    // Score Badge
-    const scoreVal = document.getElementById('resComplianceScore');
-    if (scoreVal) {
-        scoreVal.textContent = comp.complianceScore + '%';
-        scoreVal.className = 'score-number ' + (comp.complianceScore >= 85 ? 'score-green' : comp.complianceScore >= 60 ? 'score-amber' : 'score-red');
+function renderAiExtractionCards(data) {
+    const grid = document.getElementById('aiExtractionGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const items = [
+        { label: 'Commodity Name (Rule 6c)', key: 'product_name', icon: '📦' },
+        { label: 'Manufacturer / Packer (Rule 6a)', key: 'manufacturer_name', icon: '🏭' },
+        { label: 'Postal Address & PIN', key: 'manufacturer_address', icon: '📍' },
+        { label: 'FSSAI License / Food Safety', key: 'fssai_license', icon: '📜' },
+        { label: 'Net Quantity (Rule 6d)', key: 'net_quantity', icon: '⚖️' },
+        { label: 'Mfg / Packing Date (Rule 6e)', key: 'mfg_date', icon: '📅' },
+        { label: 'Maximum Retail Price (Rule 6f)', key: 'mrp', icon: '💰' },
+        { label: 'Consumer Care Cell (Rule 6g)', key: 'consumer_care', icon: '📞' }
+    ];
+
+    items.forEach(item => {
+        const field = data[item.key];
+        const val = field?.value || 'Not Detected';
+        const isPresent = Boolean(field?.present && field?.value);
+        const card = document.createElement('div');
+        card.className = 'declaration-field-card';
+        card.style.cssText = `background: #FFFFFF; border: 1px solid ${isPresent ? '#E2E8F0' : '#FECDD3'}; border-radius: 8px; padding: 14px;`;
+
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                <span style="font-weight: 600; font-size: 0.85rem; color: #475569;">${item.icon} ${item.label}</span>
+                <span class="badge ${isPresent ? 'badge-success' : 'badge-danger'}" style="font-size: 0.72rem;">
+                    ${isPresent ? '✓ Detected' : '✗ Missing'}
+                </span>
+            </div>
+            <div style="font-weight: 700; font-size: 0.95rem; color: ${isPresent ? '#0F172A' : '#E11D48'}; margin-bottom: 4px;">
+                ${val}
+            </div>
+            ${field?.confidence ? `<div style="font-size: 0.75rem; color: #64748B;">AI Confidence: ${(field.confidence * 100).toFixed(0)}%</div>` : ''}
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function renderComplianceSummary(evalResult) {
+    const scoreVal = document.getElementById('summaryScoreVal');
+    const scoreRing = document.getElementById('summaryScoreRing');
+    const statusBadge = document.getElementById('summaryStatusBadge');
+    const authBadge = document.getElementById('summaryAuthBadge');
+    const violCount = document.getElementById('summaryViolationsCount');
+    const violList = document.getElementById('summaryViolationsList');
+
+    if (scoreVal) scoreVal.textContent = `${evalResult.overall_score}%`;
+    if (scoreRing) {
+        const color = evalResult.overall_score >= 85 ? '#059669' : (evalResult.overall_score >= 60 ? '#D97706' : '#DC2626');
+        scoreRing.style.borderTopColor = color;
     }
 
-    const statusBadge = document.getElementById('resOverallStatus');
     if (statusBadge) {
-        if (comp.overallStatus === 'compliant') {
-            statusBadge.className = 'badge badge-success badge-lg';
-            statusBadge.textContent = '✓ COMPLIANT (LEGAL METROLOGY RULES 2011)';
-        } else if (comp.overallStatus === 'warning') {
-            statusBadge.className = 'badge badge-warning badge-lg';
-            statusBadge.textContent = '⚠️ MINOR IRREGULARITIES DETECTED';
-        } else {
-            statusBadge.className = 'badge badge-danger badge-lg';
-            statusBadge.textContent = '✗ NON-COMPLIANT / VIOLATIONS FLAGGED';
-        }
+        statusBadge.textContent = evalResult.compliance_status.replace('_', ' ');
+        statusBadge.className = `badge ${evalResult.compliance_status === 'COMPLIANT' ? 'badge-success' : (evalResult.compliance_status === 'PARTIAL_COMPLIANCE' ? 'badge-warning' : 'badge-danger')}`;
     }
 
-    // Authenticity Badge
-    const authBadge = document.getElementById('resAuthStatus');
     if (authBadge) {
-        if (comp.authenticityStatus === 'verified') {
-            authBadge.className = 'badge badge-success';
-            authBadge.textContent = '✓ Product Authenticity Verified';
-        } else if (comp.authenticityStatus === 'mismatch') {
-            authBadge.className = 'badge badge-danger';
-            authBadge.textContent = '🚨 Counterfeit / Brand Mismatch Alert';
-        } else {
-            authBadge.className = 'badge badge-secondary';
-            authBadge.textContent = 'ℹ️ Registry Unverified';
-        }
-    }
-    const authNotesEl = document.getElementById('resAuthNotes');
-    if (authNotesEl) authNotesEl.textContent = comp.authenticityNotes;
-
-    // Declarations Checklist
-    const decList = document.getElementById('resDeclarationsList');
-    if (decList) {
-        decList.innerHTML = '';
-        comp.declarations.forEach(d => {
-            const item = document.createElement('div');
-            item.className = 'declaration-item ' + (d.compliant ? 'dec-pass' : 'dec-fail');
-            item.innerHTML = `
-                <div class="dec-header">
-                    <strong>${d.label} (${d.rule_reference})</strong>
-                    <span class="badge ${d.compliant ? 'badge-success' : 'badge-danger'}">${d.compliant ? 'Pass' : 'Failed'}</span>
-                </div>
-                <div class="dec-value">${d.value_extracted ? `"${d.value_extracted}"` : '<em class="text-muted">Not detected on label</em>'}</div>
-                ${d.notes ? `<div class="dec-notes text-muted"><small>${d.notes}</small></div>` : ''}
-            `;
-            decList.appendChild(item);
-        });
+        authBadge.textContent = evalResult.authenticity_status.replace('_', ' ');
+        authBadge.className = `badge ${evalResult.authenticity_status === 'AUTHENTIC' ? 'badge-success' : 'badge-danger'}`;
     }
 
-    // Violations List
-    const vioSection = document.getElementById('resViolationsSection');
-    const vioList = document.getElementById('resViolationsList');
-    const noVioCard = document.getElementById('noViolationsCard');
+    if (violCount) violCount.textContent = evalResult.violations.length;
 
-    if (vioList) {
-        vioList.innerHTML = '';
-        if (comp.violations.length === 0) {
-            if (vioSection) vioSection.style.display = 'none';
-            if (noVioCard) noVioCard.style.display = 'block';
+    if (violList) {
+        violList.innerHTML = '';
+        if (evalResult.violations.length === 0) {
+            violList.innerHTML = '<div style="color: #059669; font-weight: 600; padding: 10px 0;">✓ Perfect Compliance: All Rule 6 mandatory declarations and font standards satisfied.</div>';
         } else {
-            if (vioSection) vioSection.style.display = 'block';
-            if (noVioCard) noVioCard.style.display = 'none';
-            comp.violations.forEach(v => {
-                const card = document.createElement('div');
-                card.className = 'violation-card ' + (v.severity === 'critical' ? 'vio-critical' : 'vio-warning');
-                card.innerHTML = `
-                    <div class="vio-header">
-                        <span class="badge ${v.severity === 'critical' ? 'badge-danger' : 'badge-warning'}">${v.severity.toUpperCase()}</span>
-                        <strong>${v.rule_reference}: ${v.title}</strong>
+            evalResult.violations.forEach(v => {
+                const item = document.createElement('div');
+                item.style.cssText = 'background: #FFF1F2; border-left: 4px solid #E11D48; padding: 10px 14px; margin-bottom: 8px; border-radius: 4px;';
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; font-weight: 700; color: #9F1239; font-size: 0.88rem;">
+                        <span>${v.rule_ref}: ${v.rule_name}</span>
+                        <span class="badge badge-danger">${v.severity.toUpperCase()}</span>
                     </div>
-                    <p class="vio-desc">${v.description}</p>
-                    <div class="vio-footer">
-                        <small><strong>Penalty Reference:</strong> ${v.penalty_section}</small>
-                        ${v.suggestion ? `<small class="vio-sugg"><strong>Remedy:</strong> ${v.suggestion}</small>` : ''}
-                    </div>
+                    <div style="font-size: 0.82rem; color: #881337; margin-top: 2px;">${v.description}</div>
+                    <div style="font-size: 0.75rem; color: #4C0519; margin-top: 4px;">Penalty: ${v.penalty_provision}</div>
                 `;
-                vioList.appendChild(card);
+                violList.appendChild(item);
             });
         }
     }
 }
 
-async function saveAndNavigateReport() {
-    showLoading('Saving inspection dossier to Supabase...');
-
-    const storeInput = document.getElementById('inputStoreName')?.value || 'Retail Store';
-    const locInput = document.getElementById('inputLocation')?.value || 'Delhi Market Inspection';
-
-    const scanRecord = {
-        officer_id: scanState.officer?.id || null,
-        barcode: scanState.barcodeData?.barcode || null,
-        barcode_type: scanState.barcodeData?.type || null,
-        barcode_valid: scanState.barcodeData?.isValid || false,
-        barcode_registered: scanState.barcodeData?.isRegistered || false,
-        db_product_name: scanState.barcodeData?.productName || null,
-        db_manufacturer: scanState.barcodeData?.manufacturer || null,
-        db_mrp: scanState.barcodeData?.mrp || null,
-        db_source: scanState.barcodeData?.source || 'none',
-        extracted_product_name: scanState.visionResult?.product_name?.value || null,
-        extracted_mrp: scanState.visionResult?.mrp?.value || null,
-        extracted_manufacturer: scanState.visionResult?.manufacturer_name?.value || null,
-        extracted_address: scanState.visionResult?.manufacturer_address?.value || null,
-        extracted_mfg_date: scanState.visionResult?.mfg_date?.value || null,
-        extracted_net_qty: scanState.visionResult?.net_quantity?.value || null,
-        extracted_consumer_care: scanState.visionResult?.consumer_care?.value || null,
-        extracted_language: scanState.visionResult?.language_detected || 'English',
-        gemini_confidence: 0.95,
-        image_base64: scanState.labelImage,
-        calibration_ratio: scanState.calibrationRatio,
-        overall_status: scanState.complianceResult?.overallStatus || 'pending',
-        compliance_score: scanState.complianceResult?.complianceScore || 0,
-        violation_count: scanState.complianceResult?.violationCount || 0,
-        warning_count: scanState.complianceResult?.warningCount || 0,
-        authenticity_status: scanState.complianceResult?.authenticityStatus || 'na',
-        authenticity_notes: scanState.complianceResult?.authenticityNotes || '',
-        store_name: storeInput,
-        location: locInput
-    };
-
-    const saved = await DB.saveCompleteScan(
-        scanRecord,
-        scanState.complianceResult?.declarations || [],
-        scanState.complianceResult?.violations || []
-    );
-
-    hideLoading();
-    window.location.href = 'report.html?scan=' + saved.id;
-}
-
-function goToStep(stepNumber) {
-    document.querySelectorAll('.wizard-step-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.step-indicator').forEach(el => el.classList.remove('active', 'completed'));
-
-    const targetContent = document.getElementById('stepContent' + stepNumber);
-    if (targetContent) targetContent.classList.add('active');
-
-    for (let i = 1; i <= 5; i++) {
-        const ind = document.getElementById('stepInd' + i);
-        if (ind) {
-            if (i < stepNumber) ind.classList.add('completed');
-            if (i === stepNumber) ind.classList.add('active');
-        }
-    }
-}
-
 function showLoading(msg) {
-    const overlay = document.getElementById('loadingOverlay');
-    const txt = document.getElementById('loadingText');
-    if (overlay && txt) {
-        txt.textContent = msg || 'Processing...';
-        overlay.style.display = 'flex';
+    const el = document.getElementById('globalLoadingOverlay');
+    if (el) {
+        const text = el.querySelector('#loadingMessage');
+        if (text) text.textContent = msg;
+        el.style.display = 'flex';
     }
 }
 
 function hideLoading() {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) overlay.style.display = 'none';
+    const el = document.getElementById('globalLoadingOverlay');
+    if (el) el.style.display = 'none';
 }
