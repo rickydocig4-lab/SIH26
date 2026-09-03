@@ -297,3 +297,16 @@ const DB = {
         ];
     }
 };
+
+// Aliases for unified calling convention
+DB.getProfile = DB.getCurrentUser;
+DB.saveScan = function(record) {
+    return DB.saveCompleteScan(record, record.declarations || [], record.violations || []);
+};
+
+window.DB = DB;
+window.SupabaseService = DB;
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = DB;
+}
