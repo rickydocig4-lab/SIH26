@@ -68,13 +68,13 @@
 }
 
 .step-indicator.completed .step-circle {
-    background: var(--accent-green);
-    border-color: var(--accent-green);
+    background: var(--primary-navy);
+    border-color: var(--primary-navy);
     color: #FFFFFF;
 }
 
 .step-indicator.completed .step-label {
-    color: var(--accent-green);
+    color: var(--primary-navy);
 }
 
 /* Wizard Steps Content Switcher */

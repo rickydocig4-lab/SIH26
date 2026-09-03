@@ -7,7 +7,7 @@ let currentScan = null;
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Get scan ID from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const scanId = urlParams.get('scan');
+    const scanId = urlParams.get('scan') || urlParams.get('id');
 
     if (!scanId) {
         alert('No scan ID provided. Redirecting to Dashboard.');

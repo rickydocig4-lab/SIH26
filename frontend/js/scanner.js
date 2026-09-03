@@ -42,9 +42,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initWizardNav() {
-    document.querySelectorAll('.wizard-step').forEach(stepEl => {
+    document.querySelectorAll('.step-indicator').forEach(stepEl => {
         stepEl.addEventListener('click', () => {
-            const stepNum = parseInt(stepEl.getAttribute('data-step'), 10);
+            const stepNum = parseInt(stepEl.id.replace('stepInd', ''), 10);
             if (canNavigateToStep(stepNum)) {
                 goToStep(stepNum);
             }
@@ -63,11 +63,12 @@ function canNavigateToStep(step) {
 
 function goToStep(step) {
     currentStep = step;
-    document.querySelectorAll('.wizard-step').forEach(el => {
+    document.querySelectorAll('.step-indicator').forEach(el => {
         const s = parseInt(el.getAttribute('data-step'), 10);
+        const indicatorStep = Number.isNaN(s) ? parseInt(el.id.replace('stepInd', ''), 10) : s;
         el.classList.remove('active', 'completed');
-        if (s === step) el.classList.add('active');
-        else if (s < step) el.classList.add('completed');
+        if (indicatorStep === step) el.classList.add('active');
+        else if (indicatorStep < step) el.classList.add('completed');
     });
 
     document.querySelectorAll('.wizard-step-content').forEach(el => el.classList.remove('active'));
@@ -422,6 +423,11 @@ function initStepHandlers() {
             }
         };
     } else console.warn('[Scanner] Save button NOT FOUND — check id="btnSaveAndGenerateDossier" or "btnSaveAndReport"');
+
+    const btnNewScan = document.getElementById('btnNewScan');
+    if (btnNewScan) {
+        btnNewScan.onclick = () => window.location.reload();
+    }
 
     console.log('[Scanner] ✅ All step handlers initialized.');
 }
