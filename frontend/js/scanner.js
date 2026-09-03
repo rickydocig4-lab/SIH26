@@ -455,6 +455,7 @@ async function runMultimodalAnalysis() {
 
             renderAiExtractionCards(response.data);
             renderComplianceSummary(evalResult);
+            goToStep(5);
             console.log('[Vision] ✅ Render complete. Step 4 populated.');
         } else {
             const errMsg = response?.error || 'No data returned from Vision API';
@@ -512,12 +513,13 @@ function renderAiExtractionCards(data) {
 }
 
 function renderComplianceSummary(evalResult) {
-    const scoreVal = document.getElementById('summaryScoreVal');
+    const scoreVal = document.getElementById('summaryScoreVal') || document.getElementById('resComplianceScore');
     const scoreRing = document.getElementById('summaryScoreRing');
-    const statusBadge = document.getElementById('summaryStatusBadge');
-    const authBadge = document.getElementById('summaryAuthBadge');
+    const statusBadge = document.getElementById('summaryStatusBadge') || document.getElementById('resOverallStatus');
+    const authBadge = document.getElementById('summaryAuthBadge') || document.getElementById('resAuthStatus');
     const violCount = document.getElementById('summaryViolationsCount');
-    const violList = document.getElementById('summaryViolationsList');
+    const violList = document.getElementById('summaryViolationsList') || document.getElementById('resViolationsList');
+    const declarationsList = document.getElementById('resDeclarationsList');
 
     if (scoreVal) scoreVal.textContent = `${evalResult.overall_score}%`;
     if (scoreRing) {
@@ -556,6 +558,24 @@ function renderComplianceSummary(evalResult) {
                 violList.appendChild(item);
             });
         }
+    }
+
+    if (declarationsList) {
+        declarationsList.innerHTML = '';
+        evalResult.declarations.forEach(declaration => {
+            const item = document.createElement('div');
+            item.style.cssText = 'display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #E2E8F0;';
+            item.innerHTML = `
+                <div>
+                    <strong>${declaration.name}</strong>
+                    <div class="text-muted small">${declaration.rule_ref}</div>
+                    <div class="text-secondary small">${declaration.value || 'Not detected'}</div>
+                </div>
+                <span class="badge ${declaration.status === 'compliant' ? 'badge-success' : (declaration.status === 'warning' ? 'badge-warning' : 'badge-danger')}">
+                    ${declaration.status.toUpperCase()}
+                </span>`;
+            declarationsList.appendChild(item);
+        });
     }
 }
 
