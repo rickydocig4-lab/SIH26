@@ -1,7 +1,12 @@
-﻿const SUPPORTED_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+﻿const SUPPORTED_GEMINI_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite'
+];
 const GEMINI_MODEL = SUPPORTED_GEMINI_MODELS.includes(process.env.GEMINI_MODEL)
     ? process.env.GEMINI_MODEL
-    : 'gemini-2.5-flash';
+    : SUPPORTED_GEMINI_MODELS[0];
 
 module.exports = (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
