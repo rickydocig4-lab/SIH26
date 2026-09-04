@@ -473,7 +473,11 @@ function initStepHandlers() {
 
 async function runMultimodalAnalysis() {
     console.group('[Vision] === Multimodal Analysis Start ===');
-    console.log('[Vision] Label image size:', scanState.labelImage ? Math.round(scanState.labelImage.length / 1024) + 'KB' : 'MISSING');
+    const labelImages = scanState.labelImages.length ? scanState.labelImages : [scanState.labelImage];
+    console.log('[Vision] PDP images:', labelImages.map((image, index) => ({
+        index: index + 1,
+        size: image ? Math.round(image.length / 1024) + 'KB' : 'MISSING'
+    })));
     console.log('[Vision] Barcode data:', JSON.stringify(scanState.barcodeData));
     console.log('[Vision] BACKEND_URL:', CONFIG.BACKEND_URL);
     console.log('[Vision] VISION_PROXY_URL:', CONFIG.VISION_PROXY_URL);
@@ -483,7 +487,7 @@ async function runMultimodalAnalysis() {
 
     try {
         console.log('[Vision] → Calling VisionEngine.analyzeLabel()...');
-        const response = await VisionEngine.analyzeLabel(scanState.labelImage, scanState.barcodeData);
+        const response = await VisionEngine.analyzeLabel(labelImages, scanState.barcodeData);
 
         console.log('[Vision] ← Raw API response:', JSON.stringify(response, null, 2));
         console.log('[Vision] response.success:', response?.success);

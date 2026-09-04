@@ -31,12 +31,8 @@ module.exports = async (req, res) => {
         }
 
         if (!GEMINI_API_KEY) {
-            console.warn('[Vision API] GEMINI_API_KEY is missing. Returning simulated extraction.');
-            return res.status(200).json({
-                success: true,
-                simulated: true,
-                data: getSimulatedExtraction(barcodeData)
-            });
+            console.error('[Vision API] GEMINI_API_KEY is missing.');
+            return res.status(503).json({ success: false, error: 'Gemini API key is not configured on the server.' });
         }
 
         const imageParts = images.map(image => {
@@ -164,26 +160,7 @@ JSON Schema:
         });
         return res.status(200).json({
             success: false,
-            error: err.message,
-            data: getSimulatedExtraction(req.body ? req.body.barcodeData : null)
+            error: err.message
         });
     }
 };
-
-function getSimulatedExtraction(barcodeData) {
-    const prodName = barcodeData?.productName || 'Packaged Commodity Sample';
-    const brand = barcodeData?.brand || barcodeData?.manufacturer || 'Standard Consumer Products India Ltd.';
-    const mrpVal = barcodeData?.mrp || '₹ 95.00';
-    const qtyVal = barcodeData?.netQuantity || '250g';
-
-    return {
-        product_name: { value: prodName, present: true, confidence: 0.92 },
-        manufacturer_name: { value: brand, present: true, confidence: 0.88 },
-        manufacturer_address: { value: "Plot No. 42, Industrial Area Phase-II, New Delhi 110020", present: true, confidence: 0.85, pin_code: "110020" },
-        fssai_license: { value: "10013022002253", present: true, is_valid_14_digit: true },
-        net_quantity: { value: qtyVal, present: true, confidence: 0.95, unit: "g", numeric_value: 250 },
-        mfg_date: { value: "08/2026", present: true, confidence: 0.90 },
-        mrp: { value: `${mrpVal} (incl. of all taxes)`, present: true, confidence: 0.94, numeric_value: 95, has_tax_inclusion_statement: true },
-        consumer_care: { value: "1800-11-4000 / care@doca.gov.in", present: true, confidence: 0.87 }
-    };
-}

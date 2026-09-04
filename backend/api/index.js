@@ -184,27 +184,29 @@ app.all(['/api/lookup-product', '/lookup-product'], async (req, res) => {
 // Gemini Vision Multimodal Proxy with Label-Based Authenticity Detection (Handles all endpoints and HTTP verbs)
 app.all(['/api/analyze-label', '/analyze-label', '/api/analyze-product', '/analyze-product'], async (req, res) => {
     try {
-        const { imageBase64, barcodeData } = req.body;
+        const { imageBase64, imageBase64s, barcodeData } = req.body;
+        const images = Array.isArray(imageBase64s) && imageBase64s.length
+            ? imageBase64s.slice(0, 4)
+            : (imageBase64 ? [imageBase64] : []);
 
-        if (!imageBase64) {
+        if (!images.length) {
             return res.status(400).json({ error: 'Missing imageBase64' });
         }
 
         if (!GEMINI_API_KEY) {
-            return res.json({
-                success: true,
-                simulated: true,
-                data: getSimulatedExtraction(barcodeData)
-            });
+            return res.status(503).json({ success: false, error: 'Gemini API key is not configured on the server.' });
         }
 
-        let mimeType = 'image/jpeg';
-        let rawBase64 = imageBase64;
-        const matches = imageBase64.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-        if (matches) {
-            mimeType = matches[1];
-            rawBase64 = matches[2];
-        }
+        const imageParts = images.map(image => {
+            let mimeType = 'image/jpeg';
+            let rawBase64 = image;
+            const matches = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (matches) {
+                mimeType = matches[1];
+                rawBase64 = matches[2];
+            }
+            return { inline_data: { mime_type: mimeType, data: rawBase64 } };
+        });
 
         const promptText = `You are an expert Legal Metrology Enforcement Inspector for the Department of Consumer Affairs (DoCA), Government of India.
 Examine this packaged commodity label image. Perform two simultaneous tasks:
@@ -241,7 +243,7 @@ JSON Schema:
             contents: [{
                 parts: [
                     { text: promptText },
-                    { inline_data: { mime_type: mimeType, data: rawBase64 } }
+                    ...imageParts
                 ]
             }],
             generationConfig: {
@@ -284,41 +286,10 @@ JSON Schema:
         console.error('API Error in /api/analyze-label:', err.message);
         res.json({
             success: false,
-            error: err.message,
-            data: getSimulatedExtraction(req.body.barcodeData)
+            error: err.message
         });
     }
 });
-
-function getSimulatedExtraction(barcodeData) {
-    const prodName = barcodeData?.productName || 'Packaged Commodity Sample';
-    const brand = barcodeData?.brand || barcodeData?.manufacturer || 'Standard Consumer Products India Ltd.';
-    const mrpVal = barcodeData?.mrp || '₹ 95.00';
-    const qtyVal = barcodeData?.netQuantity || '250g';
-
-    return {
-        product_name: { value: prodName, present: true, confidence: 0.92, bounding_box: { x: 0.15, y: 0.10, w: 0.70, h: 0.12 }, notes: "Prominently printed on PDP" },
-        manufacturer_name: { value: brand, present: true, confidence: 0.88, bounding_box: { x: 0.10, y: 0.65, w: 0.80, h: 0.08 }, notes: "Registered manufacturer identity found" },
-        manufacturer_address: { value: "Plot No. 42, Industrial Area Phase-II, New Delhi 110020", present: true, confidence: 0.85, bounding_box: { x: 0.10, y: 0.74, w: 0.80, h: 0.08 }, pin_code: "110020", notes: "Full postal address with PIN" },
-        fssai_license: { value: "10013022002253", present: true, is_valid_14_digit: true, notes: "FSSAI Food Safety Registration Verified" },
-        net_quantity: { value: qtyVal, present: true, confidence: 0.95, unit: "g", numeric_value: 250, bounding_box: { x: 0.10, y: 0.35, w: 0.35, h: 0.08 }, isolated_free_area: true, notes: "Printed in SI metric units" },
-        mfg_date: { value: "08/2026", present: true, confidence: 0.90, bounding_box: { x: 0.55, y: 0.35, w: 0.35, h: 0.08 }, notes: "Legible batch and manufacturing date" },
-        mrp: { value: `${mrpVal} (incl. of all taxes)`, present: true, confidence: 0.94, numeric_value: 95, has_tax_inclusion_statement: true, bounding_box: { x: 0.10, y: 0.46, w: 0.45, h: 0.09 }, notes: "Statutory tax inclusion stated" },
-        consumer_care: { value: "1800-11-4000 / care@doca.gov.in", present: true, confidence: 0.87, has_phone: true, has_email: true, bounding_box: { x: 0.10, y: 0.84, w: 0.80, h: 0.08 }, notes: "Consumer grievance contacts present" },
-        country_of_origin: { value: "India", present: true, is_imported: false },
-        importer_details: { value: null, present: false },
-        language_detected: "English & Hindi",
-        is_bilingual_or_english_hindi: true,
-        label_authenticity_indicators: {
-            has_fssai: true,
-            has_complete_postal_pin: true,
-            has_consumer_cell: true,
-            has_batch_and_date: true,
-            overall_authenticity_rating: "HIGH"
-        },
-        general_observations: "Label contains standard mandatory declarations required under Rule 6."
-    };
-}
 
 if (require.main === module) {
     app.listen(PORT, '0.0.0.0', () => {
