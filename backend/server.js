@@ -32,6 +32,15 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/analyze-label', async (req, res) => {
+    console.log('[Vision API] Request received:', {
+        method: req.method,
+        hasGeminiApiKey: Boolean(GEMINI_API_KEY),
+        model: GEMINI_MODEL,
+        imageCount: Array.isArray(req.body?.imageBase64s)
+            ? req.body.imageBase64s.length
+            : (req.body?.imageBase64 ? 1 : 0)
+    });
+
     try {
         const { imageBase64, imageBase64s, barcodeData } = req.body;
         const images = Array.isArray(imageBase64s) && imageBase64s.length
@@ -43,6 +52,7 @@ app.post('/api/analyze-label', async (req, res) => {
         }
 
         if (!GEMINI_API_KEY) {
+            console.warn('[Vision API] GEMINI_API_KEY is missing. Returning simulated extraction.');
             return res.json({
                 success: true,
                 simulated: true,
@@ -101,6 +111,12 @@ JSON Schema:
             body: JSON.stringify(payload)
         });
 
+        console.log('[Vision API] Gemini response:', {
+            model: GEMINI_MODEL,
+            status: response.status,
+            ok: response.ok
+        });
+
         if (!response.ok) {
             const errText = await response.text();
             throw new Error(`Gemini API HTTP ${response.status}: ${errText}`);
@@ -108,6 +124,14 @@ JSON Schema:
 
         const result = await response.json();
         const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log('[Vision API] Gemini result shape:', {
+            model: GEMINI_MODEL,
+            candidateCount: result.candidates?.length || 0,
+            finishReason: result.candidates?.[0]?.finishReason,
+            hasContent: Boolean(result.candidates?.[0]?.content),
+            hasText: Boolean(rawText),
+            promptFeedback: result.promptFeedback
+        });
         if (!rawText) throw new Error('Empty response from Gemini Vision');
 
         let cleanJson = rawText.trim();
@@ -116,7 +140,16 @@ JSON Schema:
         if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
         cleanJson = cleanJson.trim();
 
-        const parsed = JSON.parse(cleanJson);
+        let parsed;
+        try {
+            parsed = JSON.parse(cleanJson);
+        } catch (parseError) {
+            console.error('[Vision API] Gemini returned invalid JSON:', {
+                parseError: parseError.message,
+                rawTextPreview: cleanJson.slice(0, 500)
+            });
+            throw parseError;
+        }
         res.json({
             success: true,
             data: parsed,
@@ -124,7 +157,11 @@ JSON Schema:
         });
 
     } catch (err) {
-        console.error('API Error:', err.message);
+        console.error('[Vision API] Request failed:', {
+            message: err.message,
+            stack: err.stack,
+            hasGeminiApiKey: Boolean(GEMINI_API_KEY)
+        });
         res.json({
             success: false,
             error: err.message,

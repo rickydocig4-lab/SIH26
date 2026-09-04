@@ -8,6 +8,12 @@ const VisionEngine = {
         const endpoint = CONFIG.VISION_PROXY_URL;
         const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
 
+        console.log('[Vision] Starting request:', {
+            endpoint,
+            imageCount: images.length,
+            hasBarcodeData: Boolean(barcodeData)
+        });
+
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -20,10 +26,23 @@ const VisionEngine = {
             });
 
             if (!response.ok) {
-                throw new Error(`Server at ${endpoint} returned HTTP ${response.status}`);
+                const errorBody = await response.text();
+                console.error('[Vision] Backend HTTP error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errorBody
+                });
+                throw new Error(`Server at ${endpoint} returned HTTP ${response.status}: ${errorBody}`);
             }
 
             const result = await response.json();
+            console.log('[Vision] Backend response:', {
+                success: result?.success,
+                simulated: result?.simulated,
+                hasData: Boolean(result?.data),
+                error: result?.error,
+                modelUsed: result?.modelUsed
+            });
 
             if (result && result.data) {
                 return {
@@ -33,9 +52,10 @@ const VisionEngine = {
                 };
             }
 
-            throw new Error('Unexpected response structure from backend');
+            console.error('[Vision] Unexpected backend response structure:', result);
+            throw new Error(result?.error || 'Unexpected response structure from backend');
         } catch (error) {
-            console.warn(`Vision API call to ${endpoint} failed:`, error.message);
+            console.error(`[Vision] API call to ${endpoint} failed:`, error);
             return {
                 success: false,
                 error: error.message,
