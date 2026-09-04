@@ -105,11 +105,21 @@ const DB = {
 
     async saveCompleteScan(scanData, declarations = [], violations = []) {
         const client = getSupabase();
+        let officerId = scanData.officer_id || null;
+        if (client && !officerId) {
+            try {
+                const { data: { session } } = await client.auth.getSession();
+                officerId = session?.user?.id || null;
+            } catch (err) {
+                console.warn('Supabase officer lookup note:', err.message);
+            }
+        }
         const scanId = scanData.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(scanData.id)
             ? scanData.id
             : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString().padStart(12, '0'));
         const scanRecord = {
             id: scanId,
+            officer_id: officerId,
             barcode: scanData.barcode || null,
             db_product_name: scanData.db_product_name || null,
             db_manufacturer: scanData.db_manufacturer || scanData.brand || null,
@@ -150,7 +160,7 @@ const DB = {
                     .from('scans')
                     .upsert([scanRecord]);
                 
-                if (scanErr) console.warn('Supabase scan upsert note:', scanErr.message);
+                if (scanErr) throw scanErr;
 
                 if (declarations.length > 0) {
                     const decRecords = declarations.map(d => ({
@@ -201,22 +211,19 @@ const DB = {
                     .order('created_at', { ascending: false });
                 
                 if (role === 'officer' && userId && userId !== 'demo-officer-01') {
-                    query = query.eq('officer_id', userId);
+                    // Include older records created before officer_id was persisted.
+                    query = query.or(`officer_id.eq.${userId},officer_id.is.null`);
                 }
 
                 const { data, error } = await query;
-                if (!error && data && data.length > 0) {
-                    return data;
-                }
+                if (error) throw error;
+                return data || [];
             } catch (err) {
-                console.warn('Supabase getScansList note:', err);
+                console.error('Supabase getScansList failed:', err);
             }
         }
 
         const local = LocalStorageDB.getScans();
-        if (local.length === 0) {
-            return this.getDemoScans();
-        }
         return local;
     },
 
@@ -239,8 +246,7 @@ const DB = {
         const local = LocalStorageDB.getScanById(scanId);
         if (local) return local;
 
-        const demos = this.getDemoScans();
-        return demos.find(d => d.id === scanId) || null;
+        return null;
     },
 
     getDemoScans() {
