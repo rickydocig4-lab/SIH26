@@ -1,5 +1,8 @@
 ﻿const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const SUPPORTED_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+const PRIMARY_MODEL = SUPPORTED_MODELS.includes(process.env.GEMINI_MODEL)
+    ? process.env.GEMINI_MODEL
+    : 'gemini-2.5-flash';
 
 module.exports = async (req, res) => {
     console.log('[Vision API] Request received:', {
@@ -65,7 +68,7 @@ JSON Schema:
 }`;
 
         // Fallback models in case primary model is unavailable or 404
-        const modelsToTry = [PRIMARY_MODEL, 'gemini-2.5-flash', 'gemini-1.5-pro'].filter((v, i, a) => a.indexOf(v) === i);
+        const modelsToTry = [PRIMARY_MODEL, ...SUPPORTED_MODELS].filter((v, i, a) => a.indexOf(v) === i);
         let result = null;
         let lastError = null;
 
